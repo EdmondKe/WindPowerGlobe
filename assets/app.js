@@ -290,7 +290,7 @@ function onStyle(){
   for(const id of ['night','night2']) map.addLayer({id,type:'fill',source:id,paint:{'fill-color':dark?'#000410':'#101e40','fill-opacity':dark?0.42:0.16,'fill-antialias':false}},firstSym);
   map.setSky(dark?{'sky-color':'#06131f','horizon-color':'#14304a','fog-color':'#0b1d2d','sky-horizon-blend':0.6,'horizon-fog-blend':0.5,'fog-ground-blend':0.6,'atmosphere-blend':['interpolate',['linear'],['zoom'],0,1,6,1,9,0]}
                  :{'sky-color':'#8fcbf2','horizon-color':'#e6f4fb','fog-color':'#e6f4fb','sky-horizon-blend':0.6,'horizon-fog-blend':0.5,'fog-ground-blend':0.6,'atmosphere-blend':['interpolate',['linear'],['zoom'],0,1,6,1,9,0]});
-  applyBase();
+  applyBase(); addMusicBorders();
   applyTilt(false); applyNightVis(); applyLabelVis(); lastNightT=S.simT;
   $('#loading').hidden=true;
   // 手機上資料來源預設收合成 ⓘ（點一下就展開，頁尾也有完整來源）
@@ -589,7 +589,7 @@ function drawTrueSet(g,list,D,hh,ang0,colFn,farm,spKm,occ){
   for(const t of list){
     if(!inBox(t.lon,t.lat,0)) continue;
     const p=project(t.lon,t.lat); if(!p) continue;
-    if(farm) tPick.push([p[0],p[1],farm]);
+    tPick.push([p[0],p[1],farm,t]);
     const lk=localKm(t.lon,t.lat), far=Math.min(1,lk/kmPx);
     const D_=t.D||D, h_=t.hh||hh, trueH=h_/1000*lk;
     g.fillStyle=colFn(t); g.beginPath(); g.arc(p[0],p[1],Math.max(1.6,Math.min(5,D_/1000*lk*0.05)),0,TAU); g.fill();
@@ -667,7 +667,7 @@ let fly=false, zenMove=false;
 function userTook(){ if(S.tour) setTour(false); fly=false; }
 function pick(x,y){
   let best=null,bd=1e9;
-  for(const t of tPick){const d=Math.hypot(t[0]-x,t[1]-y); if(d<12&&d<bd){bd=d;best=t[2];}}
+  for(const t of tPick){ if(!t[2]) continue; const d=Math.hypot(t[0]-x,t[1]-y); if(d<12&&d<bd){bd=d;best=t[2];}}
   if(best) return best;
   for(const f of FARMS){ if(!f.px) continue; const d=Math.hypot(f.px[0]-x,f.px[1]-y); const lim=Math.max(14,(f.r||6)+6); if(d<lim&&d<bd){bd=d;best=f;} }
   return best;
@@ -676,13 +676,38 @@ for(const ev of ['dragstart','zoomstart','rotatestart','pitchstart']) map.on(ev,
 map.on('move',()=>{ vv++; if(!zenMove) clearTrails(); });
 map.on('sourcedata',e=>{ if(e.sourceId==='dem-tr'&&e.tile){ vv++; ELEV.fill(NaN); } });
 map.on('moveend',()=>{ fly=false; });
+// 點一支風機：跳出小卡片，可以開 Google 街景或 Google 地圖（官方網址連結，開新分頁）
+function pickTurbine(x,y){
+  let best=null,bd=14;
+  for(const t of tPick){ const d=Math.hypot(t[0]-x,t[1]-y); if(d<bd){ bd=d; best={lon:t[3].lon,lat:t[3].lat,D:t[3].D||(t[2]&&t[2].D),farm:t[2],off:t[2]?t[2].k!=='on':false}; } }
+  if(WC.mode===2){ const L=WC.list; for(let k=0;k<L.length;k+=4){ const d=Math.hypot(L[k]-x,L[k+1]-y); if(d<bd){ bd=d; const i=L[k+2], kk=WT.cl[i]&15;
+    best={lon:WT.xy[2*i]/1e5,lat:WT.xy[2*i+1]/1e5,D:DCL[kk]||0,farm:null,off:!!(WT.cl[i]>>4)}; } } }
+  return best;
+}
+let tPopup=null;
+function showTurbinePopup(t){
+  if(tPopup) tPopup.remove();
+  const ll=`${t.lat.toFixed(6)},${t.lon.toFixed(6)}`, el=document.createElement('div'); el.className='tpop';
+  el.innerHTML='<b></b><p></p><div class="tpop-b"><a target="_blank" rel="noopener">Google 街景</a><a target="_blank" rel="noopener">Google 地圖</a></div><small></small>';
+  el.querySelector('b').textContent=t.farm?t.farm.n.replace(/（.*?）/,'')+'的風機':(t.off?'離岸風機':'陸上風機');
+  el.querySelector('p').textContent=(t.D?`葉輪直徑約 ${t.D} 公尺（推估）・`:'')+`${Math.abs(t.lat).toFixed(4)}°${t.lat>=0?'N':'S'}，${Math.abs(t.lon).toFixed(4)}°${t.lon>=0?'E':'W'}`;
+  const [aSv,aMap]=el.querySelectorAll('a');
+  aSv.href=`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ll}`;
+  aMap.href=`https://www.google.com/maps/@?api=1&map_action=map&center=${ll}&zoom=17&basemap=satellite`;
+  el.querySelector('small').textContent=t.off?'在海上，通常沒有街景，先看空照比較清楚':'街景會找最近的拍攝點，不一定看得到風車';
+  tPopup=new maplibregl.Popup({closeButton:true,maxWidth:'260px',offset:12}).setLngLat([t.lon,t.lat]).setDOMContent(el).addTo(map);
+}
 map.on('click',e=>{
   const x=e.point.x, y=e.point.y;
   if(S.zen){setZen(false);}
   else if(G.on){ const ll=unproj(x,y); if(ll&&isFinite(ll[0])&&vis(ll[0],ll[1])) gameClick(ll[0],ll[1]); }
-  else{const f=pick(x,y); if(f){userTook();select(f,true);} else select(null);}
+  else{
+    const t=kmPx>=0.8?pickTurbine(x,y):null;
+    if(t){ showTurbinePopup(t); if(t.farm&&S.sel!==t.farm) select(t.farm,false); return; }
+    const f=pick(x,y); if(f){userTook();select(f,true);} else select(null);
+  }
 });
-map.on('mousemove',e=>{ map.getCanvas().style.cursor=!G.on&&pick(e.point.x,e.point.y)?'pointer':''; });
+map.on('mousemove',e=>{ map.getCanvas().style.cursor=!G.on&&(pick(e.point.x,e.point.y)||(kmPx>=0.8&&pickTurbine(e.point.x,e.point.y)))?'pointer':''; });
 
 // z 沿用舊版的縮放倍率；放大到看得見一支支風機時，依「地形」開關決定要不要傾斜
 function flyTo(lon,lat,z,dur=1800,km){
@@ -1047,7 +1072,7 @@ function frameBody(now){
   if(S.zen&&!fly&&!map.isMoving()){ zenMove=true; map.jumpTo({center:[cLon+dtR*0.0028,cLat]}); zenMove=false; }
   if(S.tour&&!fly&&now>S.tourNext) tourGo();
   updateFarms(dtR);
-  updMusic(now,dtR);
+  updMusic(now,dtR); updNeon(now);
   if(V3.open){ updSound(now); return; }
   applyView(); updViewBox();
   updNight();
@@ -1256,24 +1281,103 @@ function setSynth(on){
 }
 
 /* ================= 背景音樂：Music/ 資料夾的 mp3，依地區輪播（歌單 data/music.json） ================= */
-// 地圖中心在台灣一帶時依序輪播 taiwan 清單；其他地方分成幾個大區，每到一個新地區就從其餘曲目隨機換一首。
+// 地圖中心在台灣時依序輪播 taiwan 清單（每跨一個縣市換下一首）；其他地方每到一個新的省／州，就從其餘曲目隨機換一首。
 // 換地區時等 3 秒再淡出換歌，飛過去不會一直切；拉遠看整顆地球時不換
-const PL={dir:'Music/',tw:[],rest:[],el:null,region:null,want:null,wantT:0,twIdx:-1,recent:[],v:0,target:0,failed:0,synth:false};
+const PL={dir:'Music/',tw:[],rest:[],el:null,region:null,want:null,wantT:0,twIdx:-1,recent:[],v:0,target:0,failed:0,synth:false,names:{}};
 if(PLD&&Array.isArray(PLD.files)){ PL.dir=PLD.dir||PL.dir; PL.tw=(PLD.taiwan||[]).filter(f=>PLD.files.includes(f)); PL.rest=PLD.files.filter(f=>!PL.tw.includes(f)); }
 const MP3_VOL=0.55;
-function inTaiwan(){ return Z>=2.5&&cLon>=119.0&&cLon<=122.3&&cLat>=21.7&&cLat<=25.6; }
-// [名稱, 西, 南, 東, 北]，由上往下比對，第一個符合的為準
-const MUS_REGIONS=[['日韓',124,24,150,46],['中東',34,12,63,42],['中國',73,18,135,54],['東南亞',92,-11,141,24],['南亞',60,5,92,37],
-  ['歐洲',-25,35,45,72],['非洲',-20,-36,52,37],['俄羅斯與北亞',30,46,180,82],['大洋洲',110,-50,180,-11],['北美',-170,15,-50,75],['中南美',-120,-56,-30,15]];
-function musRegion(){
-  if(inTaiwan()) return 'tw';
+// 音樂區＝30 支以上相鄰風機圍成的圓滑區塊，沿行政區切開；不到 30 支的小群（包括只有 1 支）各用一個圓圈住（data/music-zones.json，由 tools/build_music_zones.py 產生，
+// 第一次播音樂時才下載）。地圖中心進入一個音樂區就換歌，在區外維持原本的歌；台灣的音樂區依序播台灣歌單
+let ZONES=null, CIRC=[], zonesLoading=false;
+function loadZones(){
+  if(ZONES||zonesLoading) return; zonesLoading=true;
+  getJSON('data/music-zones.json').then(d=>{
+    const q=d.q||1000;
+    ZONES=d.zones.map(z=>({n:z.n,tw:!!z.tw,b:z.b.map(v=>v/q),r:z.r.map(a=>{ const o=new Float32Array(a.length); let x=0,y=0;
+      for(let k=0;k<a.length;k+=2){ x+=a[k]; y+=a[k+1]; o[k]=x/q; o[k+1]=y/q; } return o; })}));
+    // 不到 30 支的小群：[經度×q, 緯度×q, 半徑公尺, 風機數, 名稱編號, 台灣]
+    CIRC=(d.circles||[]).map(c=>({lon:c[0]/q,lat:c[1]/q,r:c[2]/1000,n:(d.names||[])[c[4]]||'',tw:!!c[5]}));
+    lastRegT=-1e9; setMusicBorderData();
+  }).catch(e=>{ console.error(e); zonesLoading=false; });
+}
+function inRings(rings,x,y){ // 奇偶規則，內環自然扣掉
+  let ins=false;
+  for(const a of rings) for(let i=0,j=a.length-2;i<a.length;j=i,i+=2){
+    const xi=a[i],yi=a[i+1],xj=a[j],yj=a[j+1];
+    if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi)) ins=!ins;
+  }
+  return ins;
+}
+// 回傳 {key, name, tw}；不在任何音樂區裡回傳 null
+function regionAtLL(lon,lat){
+  if(!ZONES) return null;
+  for(let k=0;k<ZONES.length;k++){
+    const z=ZONES[k], b=z.b; if(lat<b[1]||lat>b[3]||lon<b[0]||lon>b[2]) continue;
+    if(inRings(z.r,lon,lat)) return {key:(z.tw?'tw':'z')+k,name:z.n,tw:z.tw};
+  }
+  const kx=111.32*Math.cos(lat*D2R);
+  for(let k=0;k<CIRC.length;k++){
+    const c=CIRC[k], dy=(lat-c.lat)*110.57; if(Math.abs(dy)>c.r) continue;
+    const dx=(((lon-c.lon)%360+540)%360-180)*kx; if(dx*dx+dy*dy<=c.r*c.r) return {key:(c.tw?'tw':'c')+k,name:c.n,tw:c.tw};
+  }
+  return null;
+}
+let lastReg=null, lastRegT=-1e9;
+function musRegion(now=performance.now()){
   if(Z<1.8) return PL.region||'world'; // 看整顆地球時維持原本的歌
-  if(cLat<-60) return '南極';
-  for(const r of MUS_REGIONS) if(cLon>=r[1]&&cLon<=r[3]&&cLat>=r[2]&&cLat<=r[4]) return r[0];
-  return '海洋';
+  if(Math.abs(now-lastRegT)>400){ lastRegT=now; const r=regionAtLL(cLon,cLat); if(r) lastReg=r; else lastReg=null; }
+  if(!lastReg) return PL.region||'world'; // 不在音樂區裡時維持原本的歌
+  PL.names[lastReg.key]=lastReg.name;
+  return lastReg.key;
+}
+
+/* ---------- 音樂邊界線：音樂區的外框，像霓虹燈一樣發光、閃爍（只在播放音樂時顯示） ---------- */
+// 大區塊（30 支以上）粉紅霓虹；小群圓圈紫色霓虹
+function musicBorderFC(){
+  const big=[], small=[];
+  if(ZONES) for(const z of ZONES) for(const a of z.r){ const c=[]; for(let k=0;k<a.length;k+=2) c.push([a[k],a[k+1]]); big.push(c); }
+  for(const c of CIRC){
+    const ring=[], kx=111.32*Math.cos(c.lat*D2R);
+    for(let i=0;i<=40;i++){ const a=i/40*TAU; ring.push([c.lon+Math.cos(a)*c.r/kx,c.lat+Math.sin(a)*c.r/110.57]); }
+    small.push(ring);
+  }
+  return {type:'FeatureCollection',features:[
+    {type:'Feature',properties:{k:'big'},geometry:{type:'MultiLineString',coordinates:big}},
+    {type:'Feature',properties:{k:'small'},geometry:{type:'MultiLineString',coordinates:small}}]};
+}
+function setMusicBorderData(){ const src=map.getSource('musb'); if(src) src.setData(musicBorderFC()); }
+const NEON=['musb-glow2','musb-glow','musb-core'];
+function addMusicBorders(){
+  if(map.getSource('musb')) return;
+  const layers=map.getStyle().layers, firstSym=(layers.find(l=>l.type==='symbol')||{}).id;
+  map.addSource('musb',{type:'geojson',data:musicBorderFC()});
+  const lay={'line-join':'round','line-cap':'round'}, wz=(a,b)=>['interpolate',['linear'],['zoom'],2,a,8,b];
+  // 三層疊出霓虹燈管：最外面寬而模糊的光暈、中間的亮粉紅、最裡面接近白色的燈芯
+  const col=(big,small)=>['match',['get','k'],'small',small,big];
+  map.addLayer({id:'musb-glow2',type:'line',source:'musb',layout:lay,paint:{'line-color':col('#ff1f8f','#9b3dff'),'line-width':wz(9,22),'line-blur':wz(7,16),'line-opacity':0.3}},firstSym);
+  map.addLayer({id:'musb-glow',type:'line',source:'musb',layout:lay,paint:{'line-color':col('#ff4fb0','#b86bff'),'line-width':wz(3.5,7),'line-blur':wz(1.5,3),'line-opacity':0.7}},firstSym);
+  map.addLayer({id:'musb-core',type:'line',source:'musb',layout:lay,paint:{'line-color':col('#ffe3f3','#efe0ff'),'line-width':wz(1,1.8),'line-opacity':0.9}},firstSym);
+  applyMusicBorders();
+}
+function applyMusicBorders(){
+  const v=MUS.on?'visible':'none';
+  for(const id of NEON) if(map.getLayer(id)) map.setLayoutProperty(id,'visibility',v);
+}
+// 霓虹燈效果：約 2.6 秒一次的呼吸，偶爾像接觸不良一樣快速閃一下（每 0.1 秒更新一次，避免整張地圖一直重畫）
+let neonT=0, neonFlick=0;
+function updNeon(now){
+  if(!MUS.on||now-neonT<100||!map.getLayer('musb-core')) return; neonT=now;
+  if(neonFlick<=0&&Math.random()<0.012) neonFlick=3+Math.floor(Math.random()*4);
+  let k=0.6+0.4*Math.sin(now/2600*TAU);
+  if(neonFlick>0){ neonFlick--; k=neonFlick%2?0.15:1; }
+  // 拉遠時（看整個國家）只剩三成亮度，放大到 zoom 6 以上才完整發亮，不然一整片小光點很雜
+  const op=v=>['interpolate',['linear'],['zoom'],3,v*0.3,6,v];
+  map.setPaintProperty('musb-glow2','line-opacity',op(0.12+0.3*k));
+  map.setPaintProperty('musb-glow','line-opacity',op(0.3+0.5*k));
+  map.setPaintProperty('musb-core','line-opacity',op(0.45+0.5*k));
 }
 function nextTrack(region){
-  if(region==='tw'&&PL.tw.length){ PL.twIdx=(PL.twIdx+1)%PL.tw.length; return PL.tw[PL.twIdx]; }
+  if(String(region).startsWith('tw')&&PL.tw.length){ PL.twIdx=(PL.twIdx+1)%PL.tw.length; return PL.tw[PL.twIdx]; }
   const pool=PL.rest.length?PL.rest:PL.tw; let f=pool[0];
   for(let k=0;k<12;k++){ f=pool[Math.floor(Math.random()*pool.length)]; if(!PL.recent.includes(f)) break; }
   PL.recent.push(f); if(PL.recent.length>Math.min(6,Math.floor(pool.length/2))) PL.recent.shift();
@@ -1290,14 +1394,15 @@ function playTrack(region){
   const f=nextTrack(region); PL.region=region; PL.want=null;
   PL.el.src=PL.dir+encodeURIComponent(f); PL.v=0; PL.el.volume=0; PL.target=MP3_VOL*duck();
   PL.el.play().catch(()=>{});
-  const nm=f.replace(/\.[^.]+$/,''); if(!/^\d+$/.test(nm)) toast('♫ '+nm,2500);
+  const nm=f.replace(/\.[^.]+$/,''), where=PL.names[region]||'';
+  if(where||!/^\d+$/.test(nm)) toast('♫ '+[where,/^\d+$/.test(nm)?'':nm].filter(Boolean).join('・'),2800);
 }
 let lastDuck=0;
 function updMusic(now,dtR){
   if(MUS.ac&&MUS.on&&now-lastDuck>500){ lastDuck=now; MUS.out.gain.setTargetAtTime(0.32*MUS.vol*duck(),MUS.ac.currentTime,0.6); }
   if(!PL.el||PL.synth) return;
   if(MUS.on){
-    const want=musRegion();
+    const want=musRegion(now);
     if(want===PL.region) PL.want=null;
     else if(PL.want!==want){ PL.want=want; PL.wantT=now; }
     else if(now-PL.wantT>3000) PL.target=0; // 淡出，音量到 0 時換到新地區的歌單
@@ -1312,10 +1417,11 @@ function updMusic(now,dtR){
   }
 }
 function setMusic(on){
-  MUS.on=on; $('#bMus').setAttribute('aria-pressed',on);
-  if(PL.synth||!(PL.tw.length+PL.rest.length)){ setSynth(on); return; }
-  if(on){ if(!PL.el||!PL.region) playTrack(musRegion()); else { PL.el.play().catch(()=>{}); PL.target=MP3_VOL*duck(); } }
+  MUS.on=on; $('#bMus').setAttribute('aria-pressed',on); applyMusicBorders(); if(on) loadZones();
+  if(PL.synth||!(PL.tw.length+PL.rest.length)) setSynth(on);
+  else if(on){ if(!PL.el||!PL.region) playTrack(musRegion()); else { PL.el.play().catch(()=>{}); PL.target=MP3_VOL*duck(); } }
   else PL.target=0;
+  if(on&&!setMusic.told){ setMusic.told=true; toast('♫ 發光的霓虹圈是音樂區（粉紅＝大風場、紫色＝小風車群），地圖中心移進另一圈就會換歌',4500); }
 }
 $('#bMus').onclick=()=>setMusic(!MUS.on);
 

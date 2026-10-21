@@ -220,3 +220,17 @@ body.v3on{overflow:hidden}
 .credits a{color:inherit}
 .loading{position:absolute;inset:0;display:grid;place-items:center;z-index:2;pointer-events:none;color:var(--muted);font-weight:700}
 .loading[hidden]{display:none}
+
+/* 點風機的小卡片 */
+.maplibregl-popup-content{background:var(--surface2);color:var(--text);border-radius:12px;padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.maplibregl-popup-close-button{color:var(--muted);font-size:18px;width:26px;height:26px}
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip{border-top-color:var(--surface2)}
+.maplibregl-popup-anchor-top .maplibregl-popup-tip{border-bottom-color:var(--surface2)}
+.maplibregl-popup-anchor-left .maplibregl-popup-tip{border-right-color:var(--surface2)}
+.maplibregl-popup-anchor-right .maplibregl-popup-tip{border-left-color:var(--surface2)}
+.tpop b{display:block;font-size:15px;margin-right:18px}
+.tpop p{margin:2px 0 8px;font-size:12px;color:var(--muted)}
+.tpop-b{display:flex;gap:6px}
+.tpop-b a{flex:1;text-align:center;text-decoration:none;font-weight:700;font-size:13px;padding:6px 8px;border-radius:8px;background:var(--accent);color:var(--accent-ink)}
+.tpop-b a+a{background:var(--line);color:var(--text)}
+.tpop small{display:block;margin-top:6px;font-size:11px;color:var(--muted)}

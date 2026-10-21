@@ -51,6 +51,14 @@ python tools/build_music.py
 
 會重新產生 `data/music.json`。台灣歌單寫在 `tools/build_music.py` 的 `TAIWAN`（或直接改 `data/music.json` 的 `taiwan`）。
 
+音樂區是風機群：30 支以上相鄰的風機圍成圓滑的區塊，跨省（州、縣市）時沿行政界線切開，附近有圖鑑裡的風場就用風場名稱命名。地圖中心進入一個音樂區就換歌（台灣的音樂區依序播台灣歌單），在區外維持原本的歌；播音樂時這些區塊的外框會像霓虹燈一樣發光閃爍。資料 `data/music-zones.json` 由風機資料和 Natural Earth 1:10m Admin 1 產生（更新風機資料後也要重跑）：
+
+```bash
+python tools/build_music_zones.py WindGlobe_data/ne_admin1/ne_10m_admin_1_states_provinces.shp
+```
+
+（需要 `pip install pyshp shapely`；行政區原始檔請從 https://www.naturalearthdata.com/ 下載。）
+
 ≋ 鈕是風聲・白噪音選單（原野微風、海邊風浪、山谷呼嘯、颱風暴風、白噪音），都是網頁即時合成；開著時背景音樂會自動降到約 4 成音量。
 
 ## 發布到 GitHub Pages
