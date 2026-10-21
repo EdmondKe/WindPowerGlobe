@@ -43,10 +43,10 @@ async function getTurbines(u){
   }
   return ab;
 }
-const [FD, TWA, TOPO50, TWTOPO, TYD, WMETA, WBUF] = await Promise.all([
+const [FD, TWA, TOPO50, TWTOPO, TYD, WMETA, PLD, WBUF] = await Promise.all([
   getJSON('data/farms.json'), getJSON('data/tw-farm-turbines.json'), getJSON('data/countries-50m.json'),
   getJSON('data/taiwan-counties.json'), getJSON('data/typhoons.json').catch(()=>({storms:[]})),
-  getJSON('data/turbines-meta.json').catch(()=>null), getTurbines('data/turbines.bin.gz').catch(e=>{console.error(e);return e;})
+  getJSON('data/turbines-meta.json').catch(()=>null), getJSON('data/music.json').catch(()=>null), getTurbines('data/turbines.bin.gz').catch(e=>{console.error(e);return e;})
 ]);
 
 /* ---------- 風場資料（約略值，data/farms.json） ---------- */
@@ -763,32 +763,88 @@ $('#bZen').onclick=()=>setZen(!S.zen);
 $('#bFs').onclick=()=>{const st=$('#stage');try{if(document.fullscreenElement)document.exitFullscreen();else st.requestFullscreen();}catch(e){}};
 document.addEventListener('fullscreenchange',()=>setTimeout(resize,60));
 
-/* ---------- 風聲 ---------- */
-let AC=null, gain=null, filt=null, lastSnd=0;
+/* ---------- 風聲・白噪音（Web Audio 即時合成） ---------- */
+const SND_TYPES=[['breeze','原野微風','跟著地圖上的風速變大變小'],['sea','海邊風浪','低低的風聲，加上一波一波的浪'],['valley','山谷呼嘯','高高低低的呼呼聲'],['storm','颱風暴風','又強又急的陣風'],['white','白噪音','平穩的沙沙聲，適合專心或睡覺']];
+let sndType='breeze'; try{ const t=localStorage.getItem('windglobe-sound'); if(SND_TYPES.some(x=>x[0]===t)) sndType=t; }catch(e){}
+let AC=null, sndOut=null, SND=null, lastSnd=0; const NBUF={};
+function makeNoise(kind){
+  const len=AC.sampleRate*4, buf=AC.createBuffer(1,len,AC.sampleRate), d=buf.getChannelData(0);
+  let b0=0,b1=0,b2=0,br=0;
+  for(let i=0;i<len;i++){
+    const w=Math.random()*2-1;
+    if(kind==='white') d[i]=w*0.25;
+    else if(kind==='brown'){ br=(br+0.02*w)/1.02; d[i]=br*3.2; }
+    else { b0=0.99765*b0+w*0.099046; b1=0.963*b1+w*0.2965164; b2=0.57*b2+w*1.0526913; d[i]=(b0+b1+b2+w*0.1848)*0.12; }
+  }
+  return buf;
+}
+// 一條聲音：噪音 → 濾波器 → 音量
+function sndPart(kind,ftype,f,q){
+  const s=AC.createBufferSource(); s.buffer=NBUF[kind]; s.loop=true; s.start(0,Math.random()*3);
+  const fl=AC.createBiquadFilter(); fl.type=ftype; fl.frequency.value=f; fl.Q.value=q||0.7;
+  const g=AC.createGain(); g.gain.value=0; s.connect(fl).connect(g).connect(sndOut);
+  return {s,f:fl,g};
+}
+function buildSound(type){
+  if(SND){ const old=SND; for(const p of old.parts) p.g.gain.setTargetAtTime(0,AC.currentTime,0.3); setTimeout(()=>{ for(const p of old.parts) try{p.s.stop();}catch(e){} },1500); }
+  const P=[];
+  if(type==='sea'){ P.push(sndPart('brown','lowpass',600)); P.push(sndPart('pink','bandpass',1400,0.6)); }
+  else if(type==='valley'){ P.push(sndPart('white','bandpass',800,14)); P.push(sndPart('pink','lowpass',300)); }
+  else if(type==='storm'){ P.push(sndPart('pink','lowpass',1200,0.9)); P.push(sndPart('brown','lowpass',160)); }
+  else if(type==='white') P.push(sndPart('white','lowpass',7000));
+  else P.push(sndPart('pink','lowpass',400,0.8));
+  SND={type,parts:P,vf:800}; lastSnd=0;
+}
 function startSound(){
   try{
     if(!AC){
       AC=new (window.AudioContext||window.webkitAudioContext)();
-      const len=AC.sampleRate*4, buf=AC.createBuffer(1,len,AC.sampleRate), d=buf.getChannelData(0);
-      let b0=0,b1=0,b2=0;
-      for(let i=0;i<len;i++){const w=Math.random()*2-1;b0=0.99765*b0+w*0.099046;b1=0.963*b1+w*0.2965164;b2=0.57*b2+w*1.0526913;d[i]=(b0+b1+b2+w*0.1848)*0.12;}
-      const src=AC.createBufferSource(); src.buffer=buf; src.loop=true;
-      filt=AC.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=400; filt.Q.value=0.8;
-      gain=AC.createGain(); gain.gain.value=0;
-      src.connect(filt).connect(gain).connect(AC.destination); src.start();
+      for(const k of ['white','pink','brown']) NBUF[k]=makeNoise(k);
+      sndOut=AC.createGain(); sndOut.connect(AC.destination);
     }
     AC.resume();
+    if(!SND||SND.type!==sndType) buildSound(sndType);
   }catch(e){S.sound=false;}
 }
-$('#bSnd').onclick=()=>{S.sound=!S.sound;$('#bSnd').setAttribute('aria-pressed',S.sound);if(S.sound)startSound();};
-function updSound(now){
-  if(!AC||now-lastSnd<350) return; lastSnd=now;
-  let w; if(S.sel) w=S.sel.ws; else {const v=windAt(cLon,cLat,simSec);w=Math.hypot(v[0],v[1])+3;}
-  const gust=0.75+Math.random()*0.5;
-  const on=S.sound&&S.playing;
-  gain.gain.setTargetAtTime(on?Math.min(0.5,0.05+w*0.018)*gust:0,AC.currentTime,0.45);
-  filt.frequency.setTargetAtTime(220+w*60*gust,AC.currentTime,0.6);
+function setSound(on,type){
+  if(type){ sndType=type; try{localStorage.setItem('windglobe-sound',type);}catch(e){} }
+  S.sound=on; $('#bSnd').setAttribute('aria-pressed',on);
+  if(MUS.on&&PL.target>0) PL.target=MP3_VOL*duck();
+  if(on){ startSound(); toast('≋ '+SND_TYPES.find(x=>x[0]===sndType)[1]+(MUS.on?'（背景音樂自動變小聲）':''),2200); }
+  updSoundMenu();
 }
+function toggleSound(){ setSound(!S.sound); }
+const smenu=$('#smenu');
+function updSoundMenu(){ for(const b of smenu.querySelectorAll('[data-t]')) b.setAttribute('aria-pressed',S.sound&&b.dataset.t===sndType); }
+for(const [t,nm,desc] of SND_TYPES){
+  const b=document.createElement('button'); b.className='big'; b.dataset.t=t; b.innerHTML='<b></b><small></small>';
+  b.querySelector('b').textContent=nm; b.querySelector('small').textContent=desc;
+  b.onclick=()=>{ smenu.hidden=true; setSound(true,t); };
+  $('#smOff').before(b);
+}
+$('#smOff').onclick=()=>{ smenu.hidden=true; setSound(false); };
+$('#bSnd').onclick=e=>{ e.stopPropagation(); updSoundMenu(); $('#gmenu').hidden=true; smenu.hidden=!smenu.hidden; };
+document.addEventListener('click',e=>{ if(!smenu.hidden&&!smenu.contains(e.target)&&e.target.id!=='bSnd') smenu.hidden=true; });
+function updSound(now){
+  if(!AC||!SND||now-lastSnd<350) return; lastSnd=now;
+  const T=AC.currentTime, on=S.sound, [a,b]=SND.parts, set=(p,v,tc=0.45)=>p.g.gain.setTargetAtTime(on?v:0,T,tc);
+  if(SND.type==='breeze'){
+    let w; if(S.sel) w=S.sel.ws; else {const v=windAt(cLon,cLat,simSec);w=Math.hypot(v[0],v[1])+3;}
+    const gust=0.75+Math.random()*0.5;
+    set(a,S.playing?Math.min(0.5,0.05+w*0.018)*gust:0); a.f.frequency.setTargetAtTime(220+w*60*gust,T,0.6);
+  }else if(SND.type==='sea'){
+    const wave=Math.pow(Math.max(0,Math.sin(T*TAU/9)),2); // 約 9 秒一道浪
+    set(a,0.16+0.06*Math.random()); set(b,0.03+0.22*wave,0.8); b.f.frequency.setTargetAtTime(900+900*wave,T,0.8);
+  }else if(SND.type==='valley'){
+    SND.vf=Math.max(450,Math.min(1300,SND.vf+(Math.random()-0.5)*220));
+    a.f.frequency.setTargetAtTime(SND.vf,T,1.2); set(a,0.22+0.12*Math.random(),0.8); set(b,0.1);
+  }else if(SND.type==='storm'){
+    const g=0.5+Math.random()*0.7;
+    set(a,0.1+0.22*g,0.25); a.f.frequency.setTargetAtTime(700+g*1300,T,0.3); set(b,0.28);
+  }else set(a,0.06,0.6);
+}
+// 開著風聲時，背景音樂降到 4 成
+const duck=()=>S.sound?0.4:1;
 
 /* ---------- 鍵盤 ---------- */
 document.addEventListener('keydown',e=>{
@@ -801,7 +857,7 @@ document.addEventListener('keydown',e=>{
   else if(k==='ArrowRight'){S.simT+=3600000;e.preventDefault();}
   else if(k==='t'||k==='T') setTour(!S.tour);
   else if(k==='z'||k==='Z') setZen(!S.zen);
-  else if(k==='s'||k==='S') $('#bSnd').click();
+  else if(k==='s'||k==='S') toggleSound();
   else if(k==='m'||k==='M') $('#bMus').click();
   else if(k==='f'||k==='F') $('#bFs').click();
   else if(k==='w'||k==='W') $('#bWind').click();
@@ -969,6 +1025,7 @@ function frame(now){
   if(S.zen&&!fly&&!map.isMoving()){ zenMove=true; map.jumpTo({center:[cLon+dtR*0.0028,cLat]}); zenMove=false; }
   if(S.tour&&!fly&&now>S.tourNext) tourGo();
   updateFarms(dtR);
+  updMusic(now,dtR);
   if(V3.open){ updSound(now); requestAnimationFrame(frame); return; }
   applyView(); updViewBox();
   updNight();
@@ -1163,8 +1220,7 @@ function musSchedule(){
     MUS.step++; MUS.next+=SPB/2;
   }
 }
-function setMusic(on){
-  MUS.on=on; $('#bMus').setAttribute('aria-pressed',on);
+function setSynth(on){
   try{
     if(on){
       if(!MUS.ac){ musBuild(); MUS.mel=genMelody(MUS.seed); }
@@ -1176,6 +1232,58 @@ function setMusic(on){
       setTimeout(()=>{ if(!MUS.on) clearInterval(MUS.timer); },1500);
     }
   }catch(e){ MUS.on=false; $('#bMus').setAttribute('aria-pressed',false); }
+}
+
+/* ================= 背景音樂：Music/ 資料夾的 mp3，依地區輪播（歌單 data/music.json） ================= */
+// 地圖中心在台灣一帶時依序輪播 taiwan 清單，其他地方從其餘曲目隨機播放；換地區時等 3 秒再淡出換歌，飛過去不會一直切
+const PL={dir:'Music/',tw:[],rest:[],el:null,region:null,want:null,wantT:0,twIdx:-1,recent:[],v:0,target:0,failed:0,synth:false};
+if(PLD&&Array.isArray(PLD.files)){ PL.dir=PLD.dir||PL.dir; PL.tw=(PLD.taiwan||[]).filter(f=>PLD.files.includes(f)); PL.rest=PLD.files.filter(f=>!PL.tw.includes(f)); }
+const MP3_VOL=0.55;
+function inTaiwan(){ return Z>=2.5&&cLon>=119.0&&cLon<=122.3&&cLat>=21.7&&cLat<=25.6; }
+function nextTrack(region){
+  if(region==='tw'&&PL.tw.length){ PL.twIdx=(PL.twIdx+1)%PL.tw.length; return PL.tw[PL.twIdx]; }
+  const pool=PL.rest.length?PL.rest:PL.tw; let f=pool[0];
+  for(let k=0;k<12;k++){ f=pool[Math.floor(Math.random()*pool.length)]; if(!PL.recent.includes(f)) break; }
+  PL.recent.push(f); if(PL.recent.length>Math.min(6,Math.floor(pool.length/2))) PL.recent.shift();
+  return f;
+}
+function playTrack(region){
+  if(!PL.el){
+    PL.el=new Audio(); PL.el.preload='auto';
+    PL.el.addEventListener('ended',()=>{ if(MUS.on&&!PL.synth) playTrack(PL.want||PL.region); });
+    PL.el.addEventListener('playing',()=>{ PL.failed=0; });
+    PL.el.addEventListener('error',()=>{ if(!MUS.on||PL.synth) return;
+      if(++PL.failed>=3){ PL.synth=true; toast('音樂檔讀取失敗，改用電腦合成的音樂'); setSynth(true); } else playTrack(PL.region); });
+  }
+  const f=nextTrack(region); PL.region=region; PL.want=null;
+  PL.el.src=PL.dir+encodeURIComponent(f); PL.v=0; PL.el.volume=0; PL.target=MP3_VOL*duck();
+  PL.el.play().catch(()=>{});
+  const nm=f.replace(/\.[^.]+$/,''); if(!/^\d+$/.test(nm)) toast('♫ '+nm,2500);
+}
+let lastDuck=0;
+function updMusic(now,dtR){
+  if(MUS.ac&&MUS.on&&now-lastDuck>500){ lastDuck=now; MUS.out.gain.setTargetAtTime(0.32*MUS.vol*duck(),MUS.ac.currentTime,0.6); }
+  if(!PL.el||PL.synth) return;
+  if(MUS.on){
+    const want=inTaiwan()?'tw':'world';
+    if(want===PL.region) PL.want=null;
+    else if(PL.want!==want){ PL.want=want; PL.wantT=now; }
+    else if(now-PL.wantT>3000) PL.target=0; // 淡出，音量到 0 時換到新地區的歌單
+  }
+  if(MUS.on&&PL.target>0) PL.target=MP3_VOL*duck();
+  const step=dtR/1500*MP3_VOL;
+  PL.v=PL.v<PL.target?Math.min(PL.target,PL.v+step):Math.max(PL.target,PL.v-step);
+  try{ PL.el.volume=PL.v; }catch(e){}
+  if(PL.v<=0.001&&PL.target===0){
+    if(MUS.on&&PL.want) playTrack(PL.want);
+    else if(!MUS.on&&!PL.el.paused) PL.el.pause();
+  }
+}
+function setMusic(on){
+  MUS.on=on; $('#bMus').setAttribute('aria-pressed',on);
+  if(PL.synth||!(PL.tw.length+PL.rest.length)){ setSynth(on); return; }
+  if(on){ if(!PL.el||!PL.region) playTrack(inTaiwan()?'tw':'world'); else { PL.el.play().catch(()=>{}); PL.target=MP3_VOL*duck(); } }
+  else PL.target=0;
 }
 $('#bMus').onclick=()=>setMusic(!MUS.on);
 
@@ -1398,7 +1506,7 @@ resize();
 map.jumpTo({zoom:zoomForZ(1,cLat)}); applyView();
 setSpeed(2);
 appReady=true;
-window.windGlobe={map,S,FARMS,select,flyTo,open3D,specForFarm,startFind,drawFarms,stepParticles,applyView,updViewBox,bump:()=>vv++}; // 方便在瀏覽器主控台除錯
+window.windGlobe={PL,setMusic,map,S,FARMS,select,flyTo,open3D,specForFarm,startFind,drawFarms,stepParticles,applyView,updViewBox,bump:()=>vv++}; // 方便在瀏覽器主控台除錯
 if(styleReady) onStyle();
 requestAnimationFrame(frame);
 })().catch(e=>{ console.error(e); const el=document.getElementById('loading'); if(el){ el.hidden=false; el.textContent='載入失敗：'+e.message+'，請重新整理頁面。'; } });

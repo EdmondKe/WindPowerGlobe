@@ -89,7 +89,7 @@
     <button class="pill" id="bZen" aria-pressed="false" title="放空模式 (Z)">放空模式</button>
     <button class="pill" id="bGames">小遊戲 <span id="starN"></span></button>
     <button class="snd" id="bMus" aria-pressed="false" aria-label="背景音樂" title="背景音樂 (M)">♫</button>
-    <button class="snd" id="bSnd" aria-pressed="false" aria-label="風聲" title="風聲 (S)">≋</button>
+    <button class="snd" id="bSnd" aria-pressed="false" aria-label="風聲・白噪音" title="風聲・白噪音 (S 開關)">≋</button>
   </div>
   <div class="gmenu" id="gmenu" hidden>
     <div class="gm-h">小遊戲<span>已收集 ⭐ <b id="gmStars">0</b></span></div>
@@ -97,6 +97,10 @@
     <button class="big" id="gmBlow"><b>吹風發電（3D）</b><small>按住吹風，讓村莊的燈全部亮起來</small></button>
     <button class="big" id="gmBook"><b>風場貼紙簿</b><small>點開風場就能收集貼紙</small></button>
     <button class="pill" id="gmVoice" aria-pressed="true">語音朗讀：開</button>
+  </div>
+  <div class="gmenu" id="smenu" hidden>
+    <div class="gm-h">風聲・白噪音<span>開著時音樂會變小聲</span></div>
+    <button class="pill" id="smOff">關掉風聲</button>
   </div>
 </section>
 
@@ -148,7 +152,7 @@
     <li>蒲福風級：依 WMO 與交通部中央氣象署之蒲福風級表（10 公尺高度風速）。</li>
     <li>家庭用電戶數：以一般住宅每月約 300 度電（平均約 0.42 kW）估算，僅供感受規模。</li>
     <li>晝夜線：太陽赤緯採 Cooper（1969）近似式 δ = 23.45°·sin(360°·(284+n)/365)，未計時差方程。</li>
-    <li>背景音樂：網頁以 Web Audio 即時合成的原創旋律（豎琴分解和弦、長笛、弦樂墊音），非任何既有作品。</li>
+    <li>背景音樂：Music 資料夾的曲目，由網站作者提供並確認可公開播放；地圖在台灣一帶時固定輪播台灣歌單，其他地方隨機播放。音樂檔無法載入時，改用網頁以 Web Audio 即時合成的原創旋律。</li>
     <li>3D 風場：three.js r128 繪製，風機依實際座標擺放；房子與小島為示意。風機外型為示意，非特定機型。</li>
     <li>台灣離岸風機排列（未取得座標時的備用顯示）：機組數、單機容量、葉輪直徑取自各開發商公開資料；風場中心位置為約略值，風機位置為依典型間距（約 6–7 倍葉輪直徑）產生的示意格點，並非實測座標。匯入實測座標後即以實測點位取代。輪轂高度為同級機型常見值之約略值。</li>
     <li>TWD97 座標轉換：二度分帶 TM2（GRS80 橢球、中央經線 121°E、尺度比 0.9999、東偏 250,000 m，依內政部規定），反算公式依 Snyder（1987）《Map Projections: A Working Manual》USGS Professional Paper 1395。</li>

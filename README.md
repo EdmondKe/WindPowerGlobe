@@ -41,6 +41,18 @@ python tools/build_turbines.py "WindGlobe_data/raw/*.geojson"
 
 會重新產生 `data/turbines.bin.gz` 和 `data/turbines-meta.json`。原始檔很大，已在 `.gitignore` 排除，不會推上 GitHub。
 
+## 背景音樂
+
+`Music/` 裡的 mp3 由 ♫ 鈕播放：地圖中心在台灣一帶時依序輪播台灣歌單，其他地方從其餘曲目隨機播放。新增或刪除音樂後執行：
+
+```bash
+python tools/build_music.py
+```
+
+會重新產生 `data/music.json`。台灣歌單寫在 `tools/build_music.py` 的 `TAIWAN`（或直接改 `data/music.json` 的 `taiwan`）。
+
+≋ 鈕是風聲・白噪音選單（原野微風、海邊風浪、山谷呼嘯、颱風暴風、白噪音），都是網頁即時合成；開著時背景音樂會自動降到約 4 成音量。
+
 ## 發布到 GitHub Pages
 
 1. 到 https://github.com/new 建立新的 repo，例如取名 `wind-globe`，選 **Public**，其他選項都不要勾（不要加 README），按 **Create repository**。
