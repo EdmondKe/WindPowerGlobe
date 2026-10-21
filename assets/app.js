@@ -103,10 +103,18 @@ let BB=null;
 function updViewBox(){
   terrZ=Math.max(0,Math.min(12,Math.floor(map.getZoom())));
   BB=null; if(kmPx<0.05) return;
-  const b=map.getBounds(); let w=b.getWest(), e=b.getEast(), s=b.getSouth(), n=b.getNorth();
-  // 傾斜時地平線會把幾百公里外都擠進畫面上緣，只保留離中心約 2.5 個畫面寬的範圍
+  // map.getBounds() 在地球模式下會回報比實際畫面窄很多的範圍，所以自己在畫面上取 5×5 個點換算經緯度
   const Rkm=2.5*Math.max(W,H)/kmPx, dy=Rkm/110.6, dx=Rkm/(111.3*Math.max(0.05,Math.cos(cLat*D2R)));
-  if(e-w>=300||n-s>=150||e-w>2*dx||n-s>2*dy){ w=Math.max(w,cLon-dx); e=Math.min(e,cLon+dx); s=Math.max(s,cLat-dy); n=Math.min(n,cLat+dy); if(e-w>=300) return; }
+  let w=1e9,e=-1e9,s=1e9,n=-1e9,bad=false;
+  for(let gy=0;gy<=4;gy++) for(let gx=0;gx<=4;gx++){
+    const x=W*gx/4, y=H*gy/4, ll=unprojFlat(x,y), q=ll&&projFlatRaw(ll[0],ll[1]);
+    if(!q||Math.abs(q[0]-x)>2||Math.abs(q[1]-y)>2||!vis(ll[0],ll[1])){ bad=true; continue; } // 落在地球外或天空
+    const lon=cLon+(((ll[0]-cLon)%360+540)%360-180);
+    w=Math.min(w,lon); e=Math.max(e,lon); s=Math.min(s,ll[1]); n=Math.max(n,ll[1]);
+  }
+  // 有點落在天空（傾斜看到地平線）時，地平線會把幾百公里外擠進畫面上緣，只保留離中心約 2.5 個畫面寬的範圍
+  if(bad){ w=cLon-dx; e=cLon+dx; s=cLat-dy; n=cLat+dy; }
+  if(e-w>=300||n-s>=150) return;
   const mx=(e-w)*0.1+0.02, my=(n-s)*0.1+0.02;
   BB=[w-mx,s-my,e+mx,n+my];
 }
@@ -132,13 +140,14 @@ function projectElev(i,lon,lat){
   FT.e=e; const p=map.transform.locationToScreenPoint(LLF,FT);
   return isFinite(p.x)&&p.x>=-40&&p.y>=-40&&p.x<=W+40&&p.y<=H+40?[p.x,p.y]:null;
 }
-let vv=0; const WC={vv:-1,mode:-1,list:[]}, DOTB=Array.from({length:16},()=>[]), WT_MAX=5000;
+let vv=0; const WC={vv:-1,mode:-1,list:[]}, DOTB=Array.from({length:16},()=>[]), WT_MAX=2500, ICON_MAX=400;
 function drawWorld(g,dtR,occ){
   const now=performance.now(), lvl=kmPx<0.25?0:kmPx<2?1:2;
   if(now-wtLast>300){
     wtLast=now;
     for(const c of WCELLS){const w=windAt(c.cx,c.cy,simSec);c.ws=Math.hypot(w[0],w[1])*1.05+2.2;c.frac=powerFrac(c.ws);c.rpm=c.ws>=VCO?0:c.ws<VCI?0.6:Math.min(14,3+c.ws*0.95);c.fill=wHue(c.frac,0.95);}
-    if(lvl===1) for(let k=2;k<WC.list.length;k+=3){const a=WC.list[k],w=windAt(a.cx,a.cy,simSec);a.frac=powerFrac(Math.hypot(w[0],w[1])*1.05+2.2);}
+    // 只更新目前快取裡的亮點；剛換縮放層級時快取還是上一層的格式，要等重建後再更新
+    if(WC.mode===1&&lvl===1) for(let k=2;k<WC.list.length;k+=3){const a=WC.list[k],w=windAt(a.cx,a.cy,simSec);a.frac=powerFrac(Math.hypot(w[0],w[1])*1.05+2.2);}
   }
   if(S.playing) for(const c of WCELLS) c.ang+=c.rpm/60*TAU*dtR/1000*1.6;
   if(WC.vv!==vv||WC.mode!==lvl){
@@ -149,13 +158,17 @@ function drawWorld(g,dtR,occ){
       if(fresh&&lvl===1) for(let k=2;k<L.length;k+=3){const a=L[k],w=windAt(a.cx,a.cy,simSec);a.frac=powerFrac(Math.hypot(w[0],w[1])*1.05+2.2);}
     }else{
       // 先用經緯度挑出畫面裡的風機；太多時（例如德國北部）固定取其中一部分，不然拖曳會卡
-      const m=111*kmPx, ci=[], cc=[];
+      // 傾斜時畫面上半部是很遠的地方，那裡的風機只是小點：離中心越遠抽樣越稀（1、1/2、1/4、1/8）
+      const m=111*kmPx, ci=[], cc=[], scr=Math.max(W,H)/kmPx, kx=111.3*Math.cos(cLat*D2R), tilted=map.getPitch()>8;
       for(const c of WCELLS){
         if(!inBox(c.cx,c.cy,0.6)||!vis(c.cx,c.cy)) continue;
         const q=projRaw(c.cx,c.cy); if(!q||q[0]<-m||q[0]>W+m||q[1]<-m||q[1]>H+m) continue;
         for(let i=c.start;i<c.start+c.n;i++){
           if(WT.own[i]) continue;
-          if(inBox(WT.xy[2*i]/1e5,WT.xy[2*i+1]/1e5,0)){ ci.push(i); cc.push(c); }
+          const lon=WT.xy[2*i]/1e5, lat=WT.xy[2*i+1]/1e5;
+          if(!inBox(lon,lat,0)) continue;
+          if(tilted){ const r=Math.hypot((lon-cLon)*kx,(lat-cLat)*110.6)/scr, kf=r<0.5?1:r<1?2:r<1.6?4:8; if(kf>1&&i%kf) continue; }
+          ci.push(i); cc.push(c);
         }
       }
       const useT=S.tilt&&map.getPitch()>8, step=Math.max(1,Math.ceil(ci.length/(useT?WT_MAX*0.6:WT_MAX))); // 俯視時地形高度看不出差別；算地形比較慢，上限再低一點
@@ -181,11 +194,14 @@ function drawWorld(g,dtR,occ){
     g.globalCompositeOperation='source-over';
     return;
   }
-  const col=C.dark?'#f2f7fb':'#1b3446'; let icons=0;
+  const col=C.dark?'#f2f7fb':'#1b3446'; let icons=0, lastC=null;
+  // 先畫所有小點（同一格同一個顏色，只設定一次），再畫風機圖示
   for(let k=0;k<L.length;k+=4){
+    const c=L[k+3]; if(c!==lastC){ lastC=c; g.fillStyle=c.fill||wHue(c.frac,0.95); }
+    g.fillRect(L[k]-1.5,L[k+1]-1.5,3,3);
+  }
+  for(let k=0;k<L.length&&icons<ICON_MAX;k+=4){
     const x=L[k], y=L[k+1], i=L[k+2], c=L[k+3];
-    g.fillStyle=c.fill||wHue(c.frac,0.95); g.fillRect(x-1.5,y-1.5,3,3);
-    if(icons>=700) continue;
     const lk=localKm(WT.xy[2*i]/1e5,WT.xy[2*i+1]/1e5), far=Math.min(1,lk/kmPx); if(far<0.3) continue;
     const kk=WT.cl[i]&15, off=WT.cl[i]>>4, D=DCL[kk]||(off?150:90), hh=Math.max(45,D*0.65+15), trueH=hh/1000*lk;
     const Hp=S.big?Math.max(trueH,BIG_MIN*far):trueH; if(!S.big&&Hp<6) continue;
@@ -1018,15 +1034,21 @@ function updHud(now){
 
 /* ---------- 主迴圈 ---------- */
 let last=performance.now(), windWas=true;
+// 每幀先排好下一幀；就算某一段出錯，動畫也不會整個停掉（錯誤只記到主控台，同樣的錯誤只記一次）
+let frameErr='';
 function frame(now){
-  const dtR=Math.min(100,now-last); last=now;
+  requestAnimationFrame(frame);
+  try{ frameBody(now); }catch(e){ const m=String(e&&e.stack||e); if(m!==frameErr){ frameErr=m; console.error('frame',e); } }
+}
+function frameBody(now){
+  const dtR=Math.max(0,Math.min(100,now-last)); last=Math.max(last,now);
   if(S.playing){ const dts=dtR/1000*S.speeds[S.speedIdx]; S.simT+=dts*1000; simSec=S.simT/1000; stepVort(dts); }
   updTyphoons();
   if(S.zen&&!fly&&!map.isMoving()){ zenMove=true; map.jumpTo({center:[cLon+dtR*0.0028,cLat]}); zenMove=false; }
   if(S.tour&&!fly&&now>S.tourNext) tourGo();
   updateFarms(dtR);
   updMusic(now,dtR);
-  if(V3.open){ updSound(now); requestAnimationFrame(frame); return; }
+  if(V3.open){ updSound(now); return; }
   applyView(); updViewBox();
   updNight();
   // 放大到街道等級時風線幾乎不動，只剩雜點，不畫（也省下整張畫布的淡出運算）
@@ -1037,7 +1059,6 @@ function frame(now){
   if(S.sel) rotor.setAttribute('transform',`rotate(${(S.sel.ang*180/Math.PI)%360} 55 46)`);
   if(now-lastHud>250){lastHud=now;updHud(now);}
   updSound(now);
-  requestAnimationFrame(frame);
 }
 
 /* ================= 國界（找找看判斷答案、3D 風場海岸線用） ================= */
@@ -1235,11 +1256,22 @@ function setSynth(on){
 }
 
 /* ================= 背景音樂：Music/ 資料夾的 mp3，依地區輪播（歌單 data/music.json） ================= */
-// 地圖中心在台灣一帶時依序輪播 taiwan 清單，其他地方從其餘曲目隨機播放；換地區時等 3 秒再淡出換歌，飛過去不會一直切
+// 地圖中心在台灣一帶時依序輪播 taiwan 清單；其他地方分成幾個大區，每到一個新地區就從其餘曲目隨機換一首。
+// 換地區時等 3 秒再淡出換歌，飛過去不會一直切；拉遠看整顆地球時不換
 const PL={dir:'Music/',tw:[],rest:[],el:null,region:null,want:null,wantT:0,twIdx:-1,recent:[],v:0,target:0,failed:0,synth:false};
 if(PLD&&Array.isArray(PLD.files)){ PL.dir=PLD.dir||PL.dir; PL.tw=(PLD.taiwan||[]).filter(f=>PLD.files.includes(f)); PL.rest=PLD.files.filter(f=>!PL.tw.includes(f)); }
 const MP3_VOL=0.55;
 function inTaiwan(){ return Z>=2.5&&cLon>=119.0&&cLon<=122.3&&cLat>=21.7&&cLat<=25.6; }
+// [名稱, 西, 南, 東, 北]，由上往下比對，第一個符合的為準
+const MUS_REGIONS=[['日韓',124,24,150,46],['中東',34,12,63,42],['中國',73,18,135,54],['東南亞',92,-11,141,24],['南亞',60,5,92,37],
+  ['歐洲',-25,35,45,72],['非洲',-20,-36,52,37],['俄羅斯與北亞',30,46,180,82],['大洋洲',110,-50,180,-11],['北美',-170,15,-50,75],['中南美',-120,-56,-30,15]];
+function musRegion(){
+  if(inTaiwan()) return 'tw';
+  if(Z<1.8) return PL.region||'world'; // 看整顆地球時維持原本的歌
+  if(cLat<-60) return '南極';
+  for(const r of MUS_REGIONS) if(cLon>=r[1]&&cLon<=r[3]&&cLat>=r[2]&&cLat<=r[4]) return r[0];
+  return '海洋';
+}
 function nextTrack(region){
   if(region==='tw'&&PL.tw.length){ PL.twIdx=(PL.twIdx+1)%PL.tw.length; return PL.tw[PL.twIdx]; }
   const pool=PL.rest.length?PL.rest:PL.tw; let f=pool[0];
@@ -1265,7 +1297,7 @@ function updMusic(now,dtR){
   if(MUS.ac&&MUS.on&&now-lastDuck>500){ lastDuck=now; MUS.out.gain.setTargetAtTime(0.32*MUS.vol*duck(),MUS.ac.currentTime,0.6); }
   if(!PL.el||PL.synth) return;
   if(MUS.on){
-    const want=inTaiwan()?'tw':'world';
+    const want=musRegion();
     if(want===PL.region) PL.want=null;
     else if(PL.want!==want){ PL.want=want; PL.wantT=now; }
     else if(now-PL.wantT>3000) PL.target=0; // 淡出，音量到 0 時換到新地區的歌單
@@ -1282,7 +1314,7 @@ function updMusic(now,dtR){
 function setMusic(on){
   MUS.on=on; $('#bMus').setAttribute('aria-pressed',on);
   if(PL.synth||!(PL.tw.length+PL.rest.length)){ setSynth(on); return; }
-  if(on){ if(!PL.el||!PL.region) playTrack(inTaiwan()?'tw':'world'); else { PL.el.play().catch(()=>{}); PL.target=MP3_VOL*duck(); } }
+  if(on){ if(!PL.el||!PL.region) playTrack(musRegion()); else { PL.el.play().catch(()=>{}); PL.target=MP3_VOL*duck(); } }
   else PL.target=0;
 }
 $('#bMus').onclick=()=>setMusic(!MUS.on);
@@ -1506,7 +1538,7 @@ resize();
 map.jumpTo({zoom:zoomForZ(1,cLat)}); applyView();
 setSpeed(2);
 appReady=true;
-window.windGlobe={PL,setMusic,map,S,FARMS,select,flyTo,open3D,specForFarm,startFind,drawFarms,stepParticles,applyView,updViewBox,bump:()=>vv++}; // 方便在瀏覽器主控台除錯
+window.windGlobe={frameBody,PL,setMusic,map,S,FARMS,select,flyTo,open3D,specForFarm,startFind,drawFarms,stepParticles,applyView,updViewBox,bump:()=>vv++}; // 方便在瀏覽器主控台除錯
 if(styleReady) onStyle();
 requestAnimationFrame(frame);
 })().catch(e=>{ console.error(e); const el=document.getElementById('loading'); if(el){ el.hidden=false; el.textContent='載入失敗：'+e.message+'，請重新整理頁面。'; } });
