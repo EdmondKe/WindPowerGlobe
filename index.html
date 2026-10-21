@@ -11,7 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Sora:wght@500;700;800&display=swap" rel="stylesheet">
 <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
 <link href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" rel="stylesheet">
-<link href="assets/style.css?v=20261022k" rel="stylesheet">
+<link href="assets/style.css?v=20261022v" rel="stylesheet">
 </head>
 <body>
 <div class="wrap">
@@ -37,6 +37,7 @@
       <div class="hud-row ty" id="tyRow" hidden></div>
     </div>
     <div class="hint" id="hint">點一下發光的風場看看！</div>
+    <div class="gbar" id="dbar" hidden><div id="dq"></div><div id="dhint"></div><div class="grow2" id="dmodes"><button class="pill" data-m="num">數字 1–10</button><button class="pill" data-m="abc">字母 A–J</button></div><button class="pill" id="dend">結束</button></div>
     <div class="gbar" id="gbar" hidden><div id="gq"></div><div id="ghint"></div><div class="grow2"><span id="gs">⭐ 0</span><button class="pill" id="gskip">下一題</button><button class="pill" id="gend">結束</button></div></div>
     <button class="fs" id="bFs" aria-label="全畫面" title="全畫面 (F)">⛶</button>
     <div class="side">
@@ -47,6 +48,7 @@
       <button id="bLabel" aria-pressed="true" title="風場名稱 (L)"><span>⌖</span>標示</button>
       <button id="b3d" aria-pressed="false" title="用 3D 看這附近的風機"><span>▲</span>3D<small>風場</small></button>
       <button id="bBig" aria-pressed="true" title="風機放大顯示 (B)"><span>✣</span>風機<small id="bigLbl">放大</small></button>
+      <button id="bMusb" aria-pressed="true" title="音樂圈：越過霓虹圈就會換歌"><span>♫</span>音樂圈<small id="musbLbl">顯示</small></button>
       <button id="bBase" aria-pressed="false" title="台灣底圖：向量地圖／通用電子地圖／正射影像"><span>▦</span>底圖<small id="baseLbl">向量</small></button>
       <button id="bTheme" aria-pressed="false" title="畫面亮暗"><span>◐</span>畫面<small id="themeLbl">自動</small></button>
     </div>
@@ -74,7 +76,7 @@
         </div>
       </div>
       <div class="p-home">此刻大約可以供 <b id="pHome"></b> 戶家庭用電 <small>（估算）</small></div>
-      <button class="pill p3d" id="p3d">進入 3D 風場，玩「吹風發電」</button>
+      <button class="pill p3d" id="p3d">進入 3D 風場，挑戰三關任務</button>
       <p class="p-note" id="pNote"></p>
       <div class="p-meta" id="pMeta"></div>
     </aside>
@@ -94,9 +96,10 @@
   <div class="gmenu" id="gmenu" hidden>
     <div class="gm-h">小遊戲<span>已收集 ⭐ <b id="gmStars">0</b></span></div>
     <button class="big" id="gmFind"><b>找找看</b><small>聽題目，在地球上找出國家</small></button>
-    <button class="big" id="gmBlow"><b>吹風發電（3D）</b><small>按住吹風，讓村莊的燈全部亮起來</small></button>
+    <button class="big" id="gmBlow"><b>3D 風場任務</b><small>點亮村莊、對準風向、撐過暴風，三關拿星星</small></button>
+    <button class="big" id="gmDots"><b>風車點點樂</b><small>照順序點風車連線，練習數字和 ABC（平常點風車也會有 Do Re Mi）</small></button>
     <button class="big" id="gmBook"><b>風場貼紙簿</b><small>點開風場就能收集貼紙</small></button>
-    <button class="pill" id="gmVoice" aria-pressed="true">語音朗讀：開</button>
+    <div class="gm-voice"><button class="pill" id="gmVoice" aria-pressed="true">語音朗讀：開</button><select id="gmVoiceSel" aria-label="朗讀的聲音" hidden></select><button class="pill" id="gmVoiceTry">試聽</button></div>
   </div>
   <div class="gmenu" id="smenu" hidden>
     <div class="gm-h">風聲・白噪音<span>開著時音樂會變小聲</span></div>
@@ -154,7 +157,7 @@
     <li>家庭用電戶數：以一般住宅每月約 300 度電（平均約 0.42 kW）估算，僅供感受規模。</li>
     <li>晝夜線：太陽赤緯採 Cooper（1969）近似式 δ = 23.45°·sin(360°·(284+n)/365)，未計時差方程。</li>
     <li>背景音樂：Music 資料夾的曲目，由網站作者提供並確認可公開播放；地圖在台灣一帶時固定輪播台灣歌單，其他地方隨機播放。音樂檔無法載入時，改用網頁以 Web Audio 即時合成的原創旋律。</li>
-    <li>3D 風場：three.js r128 繪製，風機依實際座標擺放；房子與小島為示意。風機外型為示意，非特定機型。</li>
+    <li>3D 風場：three.js r128 繪製，風機依實際座標擺放；地面是 OpenFreeMap 底圖（© OpenMapTiles、OpenStreetMap 貢獻者）的截圖，附近的立體房子來自 OpenStreetMap 建築輪廓與高度，沒有建築資料時才用示意村莊；海岸線依真實地圖（Natural Earth、內政部）。場景種類（台灣海峽、海上、北海、沙漠、草原、山區、雪地）依位置、緯度與地形高低落差判斷；房子、小島、動物、船、雲與地形起伏為示意，風機外型非特定機型。任務中的風速、風向與暴風為遊戲設計，不是即時氣象。</li>
     <li>台灣離岸風機排列（未取得座標時的備用顯示）：機組數、單機容量、葉輪直徑取自各開發商公開資料；風場中心位置為約略值，風機位置為依典型間距（約 6–7 倍葉輪直徑）產生的示意格點，並非實測座標。匯入實測座標後即以實測點位取代。輪轂高度為同級機型常見值之約略值。</li>
     <li>TWD97 座標轉換：二度分帶 TM2（GRS80 橢球、中央經線 121°E、尺度比 0.9999、東偏 250,000 m，依內政部規定），反算公式依 Snyder（1987）《Map Projections: A Working Manual》USGS Professional Paper 1395。</li>
   </ul>
@@ -167,15 +170,29 @@
 <div id="v3d" hidden>
   <canvas id="c3d"></canvas>
   <div class="v3top"><b id="v3title"></b><span id="v3info"></span><button id="v3dn"></button><button id="v3close" aria-label="離開 3D">×</button></div>
+  <svg class="v3cmp" viewBox="0 0 60 60" aria-label="指南針：藍色是風吹去的方向，白色是風車正面">
+    <circle cx="30" cy="30" r="27" fill="rgba(6,19,31,.6)" stroke="rgba(255,255,255,.4)"/>
+    <text x="30" y="11" text-anchor="middle" font-size="8" fill="#fff" font-weight="700">北</text>
+    <path id="v3cw" d="M30 46 L30 16 M24 23 L30 15 L36 23" stroke="#45b6ff" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path id="v3cf" d="M30 30 L30 18" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="30" cy="30" r="3" fill="#ffb83d"/>
+  </svg>
+  <div class="v3mis"><b id="v3mt"></b><span id="v3md"></span><div class="v3bar v3goal"><i id="v3goal"></i></div></div>
   <div class="v3game">
     <div id="v3msg"></div>
-    <div class="v3stats">風速 <b id="v3ws">0</b> m/s　亮燈 <b id="v3lit">0</b><div class="v3bar"><i id="v3pw"></i></div></div>
-    <button id="v3blow">按住<br>吹風</button>
+    <div class="v3stats">風速 <b id="v3ws">0</b> m/s　亮燈 <b id="v3lit">0</b>　<span id="v3dirT"></span><div class="v3bar"><i id="v3pw"></i></div></div>
+    <div class="v3ctl">
+      <button id="v3l" aria-label="風車向左轉" hidden>◀</button>
+      <button id="v3blow">按住<br>吹風</button>
+      <button id="v3r" aria-label="風車向右轉" hidden>▶</button>
+      <button id="v3prot" hidden>🛡<br>保護</button>
+      <button id="v3again" hidden>再玩<br>一次</button>
+    </div>
   </div>
 </div>
 <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
-<script src="assets/app.js?v=20261022k"></script>
+<script src="assets/app.js?v=20261022v"></script>
 </body>
 </html>

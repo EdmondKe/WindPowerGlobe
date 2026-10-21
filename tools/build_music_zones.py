@@ -176,7 +176,7 @@ def main():
 
     zones = [z for z in zones if z['r']]
 
-    # 4. 不到 30 支的小群（包括只有 1 支）：用一個圓圈住，靠得近的風機會在同一群、同一個圈
+    # 4. 不到 30 支的小群（包括只有 1 支）：沿著風機排列的方向圈一個橢圓（只有 1 支時是圓），靠得近的風機會在同一群、同一個圈
     names, name_idx, circles = [], {}, []
     def nid(nm):
         if nm not in name_idx: name_idx[nm] = len(names); names.append(nm)
@@ -184,18 +184,26 @@ def main():
     for g in smalls:
         idx = [i for c in g for i in cells[c]]
         lon0 = sum(lon[i] for i in idx) / len(idx); lat0 = sum(lat[i] for i in idx) / len(idx); k = kx(lat0)
-        r_km = max(1.2, max(math.hypot((lon[i] - lon0) * k, (lat[i] - lat0) * 110.57) for i in idx) + 1.0)
+        xs = [(lon[i] - lon0) * k for i in idx]; ys = [(lat[i] - lat0) * 110.57 for i in idx]
+        # 主軸方向：座標的共變異數矩陣的主特徵向量
+        sxx = sum(x * x for x in xs); syy = sum(y * y for y in ys); sxy = sum(x * y for x, y in zip(xs, ys))
+        ang = 0.5 * math.atan2(2 * sxy, sxx - syy) if len(idx) > 1 else 0.0
+        ca, sa = math.cos(ang), math.sin(ang)
+        u = [x * ca + y * sa for x, y in zip(xs, ys)]; v = [-x * sa + y * ca for x, y in zip(xs, ys)]
+        a_km = max(abs(t) for t in u) * 1.12 + 0.8; b_km = max(abs(t) for t in v) * 1.12 + 0.8
+        if len(idx) == 1: a_km = b_km = 1.0
+        b_km = max(b_km, 0.8, a_km * 0.22)  # 太扁的橢圓不好點，最扁到 1：4.5
         c_ll = shapely.Point(lon0, lat0); tw_side = 119.3 <= lon0 <= 122.6 and 21.5 <= lat0 <= 25.5
         cand = [int(j) for j in tree.query(c_ll.buffer(1))] or [int(tree.nearest(c_ll))]
         cand = [j for j in cand if tw_side or not adm_tw[j]] or cand
         ai = min(cand, key=lambda j: adm_geoms[j].distance(c_ll))
-        circles.append([round(lon0 * Q), round(lat0 * Q), round(r_km * 1000), len(idx), nid(adm_names[ai]), 1 if adm_tw[ai] else 0])
+        circles.append([round(lon0 * Q), round(lat0 * Q), round(a_km * 1000), round(b_km * 1000), round(math.degrees(ang) * 10), len(idx), nid(adm_names[ai]), 1 if adm_tw[ai] else 0])
 
     dst = root / 'data' / 'music-zones.json'
-    dst.write_text(json.dumps({'_note': f'音樂區：{MIN_N} 支以上相鄰風機圍成的圓滑區塊（zones，沿行政區切開），不到 {MIN_N} 支的小群用圓圈（circles：[經度×q, 緯度×q, 半徑公尺, 風機數, 名稱編號, 台灣]）。由 tools/build_music_zones.py 產生。',
+    dst.write_text(json.dumps({'_note': f'音樂區：{MIN_N} 支以上相鄰風機圍成的圓滑區塊（zones，沿行政區切開），不到 {MIN_N} 支的小群用橢圓（circles：[經度×q, 緯度×q, 長半軸公尺, 短半軸公尺, 長軸方向（由東往北逆時針，0.1 度）, 風機數, 名稱編號, 台灣]）。由 tools/build_music_zones.py 產生。',
                                'q': Q, 'zones': zones, 'names': names, 'circles': circles}, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
     tw = [z['n'] for z in zones if z['tw']]
-    print(f'{len(zones)} 個音樂區、{len(circles)} 個小圓圈（台灣 {sum(c[5] for c in circles)} 個）→ {dst.relative_to(root)}（{dst.stat().st_size / 1e6:.2f} MB）；台灣大區 {len(tw)} 個：', ' '.join(tw))
+    print(f'{len(zones)} 個音樂區、{len(circles)} 個小橢圓（台灣 {sum(c[7] for c in circles)} 個）→ {dst.relative_to(root)}（{dst.stat().st_size / 1e6:.2f} MB）；台灣大區 {len(tw)} 個：', ' '.join(tw))
 
 if __name__ == '__main__':
     main()

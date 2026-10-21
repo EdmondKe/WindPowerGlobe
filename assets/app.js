@@ -642,7 +642,7 @@ function drawFarms(dtR){
   if(detailed&&EXTRA.length){
     drawTrueSet(g,EXTRA,100,80,performance.now()/1000*1.2,t=>{const w=windAt(t.lon,t.lat,simSec);return `hsla(${195-powerFrac(Math.hypot(w[0],w[1])*1.05+2.2)*150},90%,${C.dark?62:44}%,.95)`;},null,0.4,occ);
   }
-  drawGameMark(g);
+  drawGameMark(g); drawDots(g);
   if(S.big&&detailed){ const t='風機圖示已放大，大小非等比例（按 B 切換）'; g.font='500 12px "Noto Sans TC",sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; g.lineWidth=3; g.strokeStyle=C.halo; g.strokeText(t,W/2,H-12); g.fillStyle=C.warm; g.fillText(t,W/2,H-12); g.textAlign='start'; }
   if(S.labels){
     labelBoxes=[];
@@ -692,18 +692,21 @@ function showTurbinePopup(t){
   el.querySelector('b').textContent=t.farm?t.farm.n.replace(/（.*?）/,'')+'的風機':(t.off?'離岸風機':'陸上風機');
   el.querySelector('p').textContent=(t.D?`葉輪直徑約 ${t.D} 公尺（推估）・`:'')+`${Math.abs(t.lat).toFixed(4)}°${t.lat>=0?'N':'S'}，${Math.abs(t.lon).toFixed(4)}°${t.lon>=0?'E':'W'}`;
   const [aSv,aMap]=el.querySelectorAll('a');
-  aSv.href=`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ll}`;
+  // api=1&map_action=pano 的網址有時打開是全黑、要拖一下才出現，改用 layer=c&cbll= 的街景網址
+  aSv.href=`https://www.google.com/maps?layer=c&cbll=${ll}&cbp=12,0,0,0,0`;
+  if(t.off) aSv.remove(); // 海上沒有街景
   aMap.href=`https://www.google.com/maps/@?api=1&map_action=map&center=${ll}&zoom=17&basemap=satellite`;
-  el.querySelector('small').textContent=t.off?'在海上，通常沒有街景，先看空照比較清楚':'街景會找最近的拍攝點，不一定看得到風車';
+  el.querySelector('small').textContent=t.off?'在海上沒有街景，可以看空照':'街景會找最近的拍攝點，轉一轉就能找到風車';
   tPopup=new maplibregl.Popup({closeButton:true,maxWidth:'260px',offset:12}).setLngLat([t.lon,t.lat]).setDOMContent(el).addTo(map);
 }
 map.on('click',e=>{
   const x=e.point.x, y=e.point.y;
   if(S.zen){setZen(false);}
   else if(G.on){ const ll=unproj(x,y); if(ll&&isFinite(ll[0])&&vis(ll[0],ll[1])) gameClick(ll[0],ll[1]); }
+  else if(DOT.on) dotClick(x,y);
   else{
     const t=kmPx>=0.8?pickTurbine(x,y):null;
-    if(t){ showTurbinePopup(t); if(t.farm&&S.sel!==t.farm) select(t.farm,false); return; }
+    if(t){ tapNote(t,y); showTurbinePopup(t); if(t.farm&&S.sel!==t.farm) select(t.farm,false); return; }
     const f=pick(x,y); if(f){userTook();select(f,true);} else select(null);
   }
 });
@@ -1102,7 +1105,19 @@ for(const f of C50){const m=mainPart(f);f.anchor=d3.geoCentroid(m);f.area=d3.geo
 const toastEl=$('#toast'); let toastT=0;
 function toast(msg,ms=2800){ toastEl.textContent=msg; toastEl.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>toastEl.classList.remove('on'),ms); }
 S.voice=true;
-function say(text){ if(!S.voice||!('speechSynthesis' in window)) return; try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text); u.lang='zh-TW'; u.rate=0.95; u.pitch=1.1; speechSynthesis.speak(u);}catch(e){} }
+// 語音：優先挑自然一點的台灣女生聲音（Edge 的 HsiaoYu／HsiaoChen 自然語音、Chrome 的 Google 國語⋯），音調調高一點聽起來比較年輕
+let VOICE=null, voiceName=''; try{ voiceName=localStorage.getItem('windglobe-voice')||''; }catch(e){}
+const VOICE_PREF=[/HsiaoYu/i,/HsiaoChen/i,/zh-TW.*Natural|Natural.*Taiwan/i,/Yating/i,/Hanhan/i,/Mei-?Jia/i,/Google 國語|Google.*Taiwan/i,/Tingting|Ting-Ting/i,/Xiaoxiao/i];
+function zhVoices(){ return ('speechSynthesis' in window)?speechSynthesis.getVoices().filter(v=>/^(zh|cmn|yue)/i.test(v.lang)):[]; }
+function pickVoice(){
+  const vs=zhVoices(); VOICE=vs.find(v=>v.name===voiceName)||null;
+  if(!VOICE) for(const re of VOICE_PREF){ VOICE=vs.find(v=>re.test(v.name)&&/TW|Hant/i.test(v.lang))||vs.find(v=>re.test(v.name)); if(VOICE) break; }
+  if(!VOICE) VOICE=vs.find(v=>/TW/i.test(v.lang))||vs[0]||null;
+  const sel=$('#gmVoiceSel'); if(sel){ sel.innerHTML=''; for(const v of vs){ const o=document.createElement('option'); o.value=v.name; o.textContent=v.name.replace(/^Microsoft /,'').replace(/ - .*$/,''); if(VOICE&&v.name===VOICE.name) o.selected=true; sel.append(o); } sel.hidden=!vs.length; }
+}
+if('speechSynthesis' in window){ pickVoice(); speechSynthesis.addEventListener('voiceschanged',pickVoice); }
+function say(text){ if(!S.voice||!('speechSynthesis' in window)) return; try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text); u.lang=VOICE?VOICE.lang:'zh-TW'; if(VOICE) u.voice=VOICE;
+  const natural=VOICE&&/Natural|Online|Google/i.test(VOICE.name); u.rate=natural?1.02:1.0; u.pitch=natural?1.2:1.45; speechSynthesis.speak(u);}catch(e){} }
 let STARS=0; try{STARS=+localStorage.getItem('windglobe-stars')||0;}catch(e){}
 function addStar(n=1){ STARS+=n; try{localStorage.setItem('windglobe-stars',STARS);}catch(e){} updStars(); }
 function updStars(){ $('#starN').textContent='⭐ '+STARS; $('#gmStars').textContent=STARS; }
@@ -1142,12 +1157,14 @@ $('#gmFind').onclick=()=>{ gmenu.hidden=true; startFind(); };
 $('#gmBlow').onclick=()=>{ gmenu.hidden=true; const f=S.sel&&S.sel.tur?S.sel:byId.gch; userTook(); select(f,true); setTimeout(()=>open3D(specForFarm(f)),600); };
 $('#gmBook').onclick=()=>{ gmenu.hidden=true; updBook(); $('#book').hidden=false; };
 $('#gmVoice').onclick=()=>{ S.voice=!S.voice; $('#gmVoice').setAttribute('aria-pressed',S.voice); $('#gmVoice').textContent=S.voice?'語音朗讀：開':'語音朗讀：關'; };
+$('#gmVoiceSel').onchange=e=>{ voiceName=e.target.value; try{localStorage.setItem('windglobe-voice',voiceName);}catch(err){} pickVoice(); say('你好，我是風車地球的小幫手！'); };
+$('#gmVoiceTry').onclick=()=>{ const v=S.voice; S.voice=true; say('你好，我是風車地球的小幫手！一起來看風車吧！'); S.voice=v; };
 
 /* ================= 遊戲一：找找看 ================= */
 const GT=[[158,'台灣'],[392,'日本'],[156,'中國'],[840,'美國'],[36,'澳洲'],[826,'英國'],[76,'巴西'],[356,'印度'],[10,'南極洲'],[124,'加拿大'],[276,'德國'],[818,'埃及'],[404,'肯亞'],[710,'南非'],[643,'俄羅斯'],[484,'墨西哥'],[208,'丹麥'],[578,'挪威'],[32,'阿根廷'],[410,'韓國'],[608,'菲律賓'],[724,'西班牙'],[250,'法國'],[554,'紐西蘭']];
 const G={on:false,list:[],i:0,tries:0,score:0,mark:null,wait:false};
 function startFind(){
-  select(null); if(S.tour) setTour(false); if(S.zen) setZen(false);
+  select(null); if(S.tour) setTour(false); if(S.zen) setZen(false); if(DOT.on) endDots(); gamePause();
   G.on=true; G.list=d3.shuffle(GT.slice()).slice(0,8); G.i=0; G.score=0; applyLabelVis();
   $('#gbar').hidden=false; flyTo(cLon,Math.max(-40,Math.min(40,cLat)),1,1400);
   showRound();
@@ -1157,7 +1174,11 @@ function showRound(){
   $('#gq').textContent=`第 ${G.i+1}/${G.list.length} 題：${t[1]}在哪裡？點點看！`; $('#gs').textContent='⭐ '+G.score; $('#ghint').textContent='轉動地球，找到後點一下。（地名先藏起來囉）';
   say(`找找看，${t[1]}在哪裡？`);
 }
-function endFind(){ G.on=false; G.mark=null; $('#gbar').hidden=true; applyLabelVis(); }
+function endFind(){ G.on=false; G.mark=null; $('#gbar').hidden=true; applyLabelVis(); gameResume(); }
+// 玩遊戲時先關掉背景音樂和白噪音，遊戲結束再恢復原本的狀態
+let pausedAV=null;
+function gamePause(){ if(pausedAV) return; pausedAV={mus:MUS.on,snd:S.sound}; if(MUS.on) setMusic(false); if(S.sound) setSound(false); }
+function gameResume(){ if(!pausedAV) return; const p=pausedAV; pausedAV=null; if(G.on||DOT.on||V3.open) { pausedAV=p; return; } if(p.mus) setMusic(true); if(p.snd) setSound(true); }
 function bearingName(a,b){
   const p1=a[1]*D2R,p2=b[1]*D2R,dl=(b[0]-a[0])*D2R;
   const th=Math.atan2(Math.sin(dl)*Math.cos(p2),Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl))/D2R;
@@ -1204,6 +1225,137 @@ function drawGameMark(g){
   g.beginPath(); if(G.mark.ok){g.moveTo(p[0]-7,p[1]);g.lineTo(p[0]-2,p[1]+6);g.lineTo(p[0]+8,p[1]-6);}else{g.moveTo(p[0]-6,p[1]-6);g.lineTo(p[0]+6,p[1]+6);g.moveTo(p[0]+6,p[1]-6);g.lineTo(p[0]-6,p[1]+6);} g.stroke();
   g.globalAlpha=1;
 }
+
+/* ================= 遊戲三：風車點點樂（點風車彈 Do Re Mi、照順序連線數數字或 ABC） ================= */
+const DOT={on:false,mode:'num',pts:[],next:0,done:false,glows:[],hintT:0,ac:null};
+const NOTE_HZ=[261.63,293.66,329.63,349.23,392.00,440.00,493.88,523.25,587.33,659.25,698.46,783.99];
+const SOLFA=['Do','Re','Mi','Fa','So','La','Si','Do','Re','Mi','Fa','So'];
+const CN_NUM='一二三四五六七八九十';
+function dotNote(i,dur=0.9){
+  try{
+    if(!DOT.ac) DOT.ac=new (window.AudioContext||window.webkitAudioContext)();
+    const ac=DOT.ac, t=ac.currentTime, f=NOTE_HZ[Math.max(0,Math.min(NOTE_HZ.length-1,i))];
+    ac.resume();
+    // 像音樂盒：三角波＋高八度正弦，快速起音、慢慢消失
+    for(const [type,mul,vol] of [['triangle',1,0.22],['sine',2,0.07]]){
+      const o=ac.createOscillator(), g=ac.createGain(); o.type=type; o.frequency.value=f*mul;
+      g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t+dur+0.05);
+    }
+  }catch(e){}
+}
+function dotBuzz(){
+  try{
+    if(!DOT.ac) DOT.ac=new (window.AudioContext||window.webkitAudioContext)();
+    const ac=DOT.ac, t=ac.currentTime, o=ac.createOscillator(), g=ac.createGain();
+    o.type='square'; o.frequency.setValueAtTime(180,t); o.frequency.linearRampToValueAtTime(120,t+0.2);
+    g.gain.setValueAtTime(0.05,t); g.gain.exponentialRampToValueAtTime(0.0001,t+0.25); o.connect(g).connect(ac.destination); o.start(t); o.stop(t+0.3);
+  }catch(e){}
+}
+const dotLabel=i=>DOT.mode==='abc'?String.fromCharCode(65+i):String(i+1);
+function startDots(mode){
+  select(null); if(S.tour) setTour(false); if(S.zen) setZen(false); if(G.on) endFind(); gamePause();
+  DOT.on=true; DOT.mode=mode||DOT.mode; DOT.pts=[]; DOT.next=0; DOT.done=false; DOT.glows=[];
+  $('#dbar').hidden=false; for(const b of $('#dmodes').children) b.setAttribute('aria-pressed',b.dataset.m===DOT.mode);
+  $('#dq').textContent='找風車中⋯'; $('#dhint').textContent='';
+  const enough=kmPx>=0.8&&WC.mode===2&&WC.list.length/4+tPick.length>=12;
+  if(enough) setTimeout(pickDots,60);
+  else{ // 畫面上的風車不夠：飛到選中的風場，沒有就飛到大彰化
+    const f=(S.sel&&S.sel.tur)?S.sel:byId.gch;
+    flyTo(f.lon,f.lat,0,2000,0.5*Math.min(W,H)/f.extKm);
+    const go=()=>{ if(DOT.on&&!DOT.pts.length) pickDots(); };
+    map.once('moveend',()=>setTimeout(go,400)); setTimeout(go,4000); // 備援：飛行事件沒觸發時也開始
+  }
+}
+function pickDots(){
+  if(!DOT.on) return;
+  // 候選：畫面中間區域、目前畫得出來的風車（風場的與全球的）
+  const cand=[];
+  for(const t of tPick) cand.push([t[0],t[1],t[3].lon,t[3].lat]);
+  if(WC.mode===2) for(let k=0;k<WC.list.length;k+=4){ const i=WC.list[k+2]; cand.push([WC.list[k],WC.list[k+1],WT.xy[2*i]/1e5,WT.xy[2*i+1]/1e5]); }
+  const inner=cand.filter(c=>c[0]>W*0.12&&c[0]<W*0.88&&c[1]>H*0.2&&c[1]<H*0.85);
+  d3.shuffle(inner);
+  const n=10, pick=[], gap=Math.max(46,Math.min(W,H)*0.09);
+  for(const c of inner){ if(pick.length>=n) break; if(pick.every(p=>Math.hypot(p[0]-c[0],p[1]-c[1])>=gap)) pick.push(c); }
+  if(pick.length<5){ $('#dq').textContent='這裡的風車太少了，換到風車多一點的地方再按一次'; return; }
+  // 依繞著中心的角度排序，連起來會是一個圈圈或星星的形狀
+  const cx=d3.mean(pick,p=>p[0]), cy=d3.mean(pick,p=>p[1]);
+  pick.sort((a,b)=>Math.atan2(a[1]-cy,a[0]-cx)-Math.atan2(b[1]-cy,b[0]-cx));
+  DOT.pts=pick.map((p,i)=>({lon:p[2],lat:p[3],label:dotLabel(i),lit:false,flash:0}));
+  DOT.hintT=performance.now();
+  updDotBar();
+  say(DOT.mode==='abc'?'連連看，從 A 開始，照順序點風車！':'連連看，從一開始，照順序點風車！');
+}
+function updDotBar(){
+  if(DOT.done){ $('#dq').textContent='完成了！🎉'; $('#dhint').textContent='換個玩法，或拖曳地圖到別的風場再玩一次。'; return; }
+  const n=DOT.pts.length, l=DOT.pts[DOT.next]?DOT.pts[DOT.next].label:'';
+  $('#dq').textContent=`連連看：${dotLabel(0)} → ${dotLabel(n-1)}，下一個是「${l}」`;
+  $('#dhint').textContent=`每點對一支，就會彈出 Do Re Mi 的下一個音（${DOT.next}/${n}）`;
+}
+// 平常點任何一支風車都會發出一個音（畫面越上面越高），並閃一下霓虹光
+function tapNote(t,y){
+  const i=Math.round((1-Math.max(0,Math.min(1,y/H)))*9); dotNote(i);
+  DOT.glows.push({lon:t.lon,lat:t.lat,t:performance.now(),i}); if(DOT.glows.length>40) DOT.glows.shift();
+}
+function dotClick(x,y){
+  const now=performance.now();
+  if(DOT.done||!DOT.pts.length) return;
+  let best=-1,bd=34;
+  DOT.pts.forEach((p,k)=>{ const q=project(p.lon,p.lat); if(!q) return; const d=Math.hypot(q[0]-x,q[1]-6-y); if(d<bd){bd=d;best=k;} });
+  if(best<0) return;
+  if(best===DOT.next){
+    const p=DOT.pts[best]; p.lit=true; p.flash=now; dotNote(best);
+    say(DOT.mode==='abc'?p.label:(CN_NUM[best]||p.label));
+    DOT.next++; DOT.hintT=now;
+    if(DOT.next>=DOT.pts.length){
+      DOT.done=true; addStar(); confetti($('#map'));
+      DOT.pts.forEach((q,k)=>setTimeout(()=>{ dotNote(k,0.6); q.flash=performance.now(); },700+k*140));
+      setTimeout(()=>say(DOT.mode==='abc'?`太棒了！A 到 ${DOT.pts[DOT.pts.length-1].label} 全部連起來了！`:`太棒了！一到${CN_NUM[DOT.pts.length-1]||DOT.pts.length}全部連起來了！`),700+DOT.pts.length*140);
+    }
+    updDotBar();
+  }else if(!DOT.pts[best].lit){
+    dotBuzz(); DOT.pts[DOT.next].flash=now;
+    const l=DOT.pts[DOT.next].label; say(`不是這個喔，找找「${DOT.mode==='abc'?l:(CN_NUM[DOT.next]||l)}」在哪裡`);
+  }
+}
+function endDots(){ DOT.on=false; DOT.pts=[]; $('#dbar').hidden=true; gameResume(); }
+function drawDots(g){
+  if(!DOT.on&&!DOT.glows.length) return;
+  const now=performance.now(), neon=(col,blur)=>{ g.shadowColor=col; g.shadowBlur=blur; };
+  g.save(); g.lineCap='round'; g.lineJoin='round';
+  const pp=DOT.pts.map(p=>project(p.lon,p.lat));
+  // 已經連好的霓虹線
+  if(DOT.next>1){
+    g.beginPath(); let on=false;
+    for(let k=0;k<DOT.next;k++){ const q=pp[k]; if(!q){on=false;continue;} if(on) g.lineTo(q[0],q[1]-6); else g.moveTo(q[0],q[1]-6); on=true; }
+    if(DOT.done&&pp[0]&&pp[DOT.pts.length-1]) g.lineTo(pp[0][0],pp[0][1]-6);
+    neon('#ff4fd8',16); g.strokeStyle='rgba(255,90,220,.9)'; g.lineWidth=4; g.stroke();
+    g.shadowBlur=0; g.strokeStyle='#ffe6fb'; g.lineWidth=1.5; g.stroke();
+  }
+  // 風車上的霓虹圈與號碼：已點亮青色、下一個黃色（太久沒點會閃）、其他紫色
+  g.font='800 15px Sora,"Noto Sans TC",sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+  DOT.pts.forEach((p,k)=>{
+    const q=pp[k]; if(!q) return;
+    const fl=Math.max(0,1-(now-p.flash)/700), isNext=k===DOT.next&&!DOT.done, hint=isNext&&now-DOT.hintT>6000;
+    const r=16+fl*10+(isNext?Math.sin(now/220)*2:0);
+    neon(p.lit?'#4ff7ff':isNext?'#ffd84f':'#c48bff',p.lit?22:hint?26:12);
+    g.beginPath(); g.arc(q[0],q[1]-6,r,0,TAU);
+    g.strokeStyle=p.lit?'rgba(79,247,255,.95)':isNext?`rgba(255,216,79,${hint?0.6+0.4*Math.sin(now/120):0.95})`:'rgba(196,139,255,.7)';
+    g.lineWidth=p.lit?4:3; g.stroke();
+    g.shadowBlur=0; g.fillStyle=p.lit?'rgba(10,40,60,.75)':'rgba(30,10,50,.65)'; g.beginPath(); g.arc(q[0],q[1]-6,r-4,0,TAU); g.fill();
+    g.fillStyle=p.lit?'#bdfcff':'#ffffff'; g.fillText(p.label,q[0],q[1]-5);
+  });
+  // 點過的風車閃一下霓虹光（每個音不同顏色）
+  for(const gl of DOT.glows){
+    const a=1-(now-gl.t)/900; if(a<=0) continue; const q=project(gl.lon,gl.lat); if(!q) continue;
+    const hue=200+gl.i*16; neon(`hsl(${hue},100%,65%)`,24*a);
+    g.beginPath(); g.arc(q[0],q[1]-10,14+(1-a)*26,0,TAU); g.strokeStyle=`hsla(${hue},100%,70%,${a})`; g.lineWidth=4; g.stroke();
+  }
+  g.restore(); g.textAlign='start';
+}
+$('#gmDots').onclick=()=>{ gmenu.hidden=true; startDots(DOT.mode); };
+$('#dmodes').onclick=e=>{ const b=e.target.closest('button'); if(b) startDots(b.dataset.m); };
+$('#dend').onclick=endDots;
 
 /* ================= 背景音樂（原創，程式即時演奏） ================= */
 // D 大調，16 小節循環；豎琴分解和弦＋長笛旋律＋弦樂墊音＋鐘聲，旋律每 32 小節依種子重新生成
@@ -1293,11 +1445,12 @@ function loadZones(){
   if(ZONES||zonesLoading) return; zonesLoading=true;
   getJSON('data/music-zones.json').then(d=>{
     const q=d.q||1000;
-    ZONES=d.zones.map(z=>({n:z.n,tw:!!z.tw,b:z.b.map(v=>v/q),r:z.r.map(a=>{ const o=new Float32Array(a.length); let x=0,y=0;
+    ZONES=d.zones.map(z=>({n:z.n,tw:!!z.tw,w:z.w,b:z.b.map(v=>v/q),r:z.r.map(a=>{ const o=new Float32Array(a.length); let x=0,y=0;
       for(let k=0;k<a.length;k+=2){ x+=a[k]; y+=a[k+1]; o[k]=x/q; o[k+1]=y/q; } return o; })}));
     // 不到 30 支的小群：[經度×q, 緯度×q, 半徑公尺, 風機數, 名稱編號, 台灣]
-    CIRC=(d.circles||[]).map(c=>({lon:c[0]/q,lat:c[1]/q,r:c[2]/1000,n:(d.names||[])[c[4]]||'',tw:!!c[5]}));
-    lastRegT=-1e9; setMusicBorderData();
+    // 不到 30 支的小群：[經度×q, 緯度×q, 長半軸公尺, 短半軸公尺, 長軸方向（0.1 度）, 風機數, 名稱編號, 台灣]
+    CIRC=(d.circles||[]).map(c=>({lon:c[0]/q,lat:c[1]/q,a:c[2]/1000,b:c[3]/1000,ang:c[4]/10*D2R,n:(d.names||[])[c[6]]||'',tw:!!c[7]}));
+    colorZones(); lastRegT=-1e9; setMusicBorderData();
   }).catch(e=>{ console.error(e); zonesLoading=false; });
 }
 function inRings(rings,x,y){ // 奇偶規則，內環自然扣掉
@@ -1317,8 +1470,10 @@ function regionAtLL(lon,lat){
   }
   const kx=111.32*Math.cos(lat*D2R);
   for(let k=0;k<CIRC.length;k++){
-    const c=CIRC[k], dy=(lat-c.lat)*110.57; if(Math.abs(dy)>c.r) continue;
-    const dx=(((lon-c.lon)%360+540)%360-180)*kx; if(dx*dx+dy*dy<=c.r*c.r) return {key:(c.tw?'tw':'c')+k,name:c.n,tw:c.tw};
+    const c=CIRC[k], dy=(lat-c.lat)*110.57; if(Math.abs(dy)>c.a) continue;
+    const dx=(((lon-c.lon)%360+540)%360-180)*kx; if(Math.abs(dx)>c.a) continue;
+    const u=dx*Math.cos(c.ang)+dy*Math.sin(c.ang), v=-dx*Math.sin(c.ang)+dy*Math.cos(c.ang);
+    if((u/c.a)**2+(v/c.b)**2<=1) return {key:(c.tw?'tw':'c')+k,name:c.n,tw:c.tw};
   }
   return null;
 }
@@ -1332,49 +1487,92 @@ function musRegion(now=performance.now()){
 }
 
 /* ---------- 音樂邊界線：音樂區的外框，像霓虹燈一樣發光、閃爍（只在播放音樂時顯示） ---------- */
-// 大區塊（30 支以上）粉紅霓虹；小群圓圈紫色霓虹
-function musicBorderFC(){
-  const big=[], small=[];
-  if(ZONES) for(const z of ZONES) for(const a of z.r){ const c=[]; for(let k=0;k<a.length;k+=2) c.push([a[k],a[k+1]]); big.push(c); }
-  for(const c of CIRC){
-    const ring=[], kx=111.32*Math.cos(c.lat*D2R);
-    for(let i=0;i<=40;i++){ const a=i/40*TAU; ring.push([c.lon+Math.cos(a)*c.r/kx,c.lat+Math.sin(a)*c.r/110.57]); }
-    small.push(ring);
-  }
-  return {type:'FeatureCollection',features:[
-    {type:'Feature',properties:{k:'big'},geometry:{type:'MultiLineString',coordinates:big}},
-    {type:'Feature',properties:{k:'small'},geometry:{type:'MultiLineString',coordinates:small}}]};
+// 霓虹顏色：圖鑑裡有貼紙的風場（音樂區以風場名稱命名）外框是沿著邊緣流動的七彩跑馬燈；
+// 其他區域從 10 種霓虹色裡挑，附近的區域盡量不同色
+function hsl(h,s,l){ return `hsl(${Math.round(h)},${s}%,${l}%)`; }
+const STICKER_NAMES=new Set(FARMS.map(f=>f.n.replace(/（.*?）/,'')));
+const NEON_PAL=[['#ff4fb0','#ffe3f3'],['#b86bff','#efe0ff'],['#3fe0ff','#dffaff'],['#4dff88','#e0ffe9'],['#ffd23f','#fff6d6'],
+  ['#ff8a3d','#ffe7d6'],['#5b8cff','#e3ebff'],['#ff5a5a','#ffe0e0'],['#c6ff3f','#f3ffd9'],['#ff7cf0','#ffe6fc']];
+// 貪婪著色：依位置排序，每一區挑附近（中心距離小於兩區大小相加＋25 公里）還沒用過的顏色
+function colorZones(){
+  const items=[];
+  if(ZONES) for(const z of ZONES){ if(STICKER_NAMES.has(z.n)) continue; const b=z.b, cl=Math.cos((b[1]+b[3])/2*D2R);
+    items.push({o:z,x:(b[0]+b[2])/2,y:(b[1]+b[3])/2,r:Math.hypot((b[2]-b[0])*111.3*cl,(b[3]-b[1])*110.6)/2}); }
+  for(const c of CIRC) items.push({o:c,x:c.lon,y:c.lat,r:c.a});
+  const cell=0.5, grid=new Map(), key=(i,j)=>i+','+j;
+  for(const it of items){ const k=key(Math.floor(it.x/cell),Math.floor(it.y/cell)); if(!grid.has(k)) grid.set(k,[]); grid.get(k).push(it); }
+  items.sort((a,b)=>a.x-b.x||a.y-b.y);
+  items.forEach((it,n)=>{
+    const used=new Set(), i0=Math.floor(it.x/cell), j0=Math.floor(it.y/cell), cl=Math.cos(it.y*D2R);
+    for(let i=i0-1;i<=i0+1;i++) for(let j=j0-1;j<=j0+1;j++) for(const o of grid.get(key(i,j))||[]){
+      if(o===it||o.o.ci==null) continue;
+      if(Math.hypot((o.x-it.x)*111.3*cl,(o.y-it.y)*110.6)<it.r+o.r+25) used.add(o.o.ci);
+    }
+    let ci=(n*3)%NEON_PAL.length; for(let k=0;k<NEON_PAL.length&&used.has(ci);k++) ci=(ci+1)%NEON_PAL.length;
+    it.o.ci=ci;
+  });
 }
-function setMusicBorderData(){ const src=map.getSource('musb'); if(src) src.setData(musicBorderFC()); }
-const NEON=['musb-glow2','musb-glow','musb-core'];
+function musicBorderFC(){
+  const solid=[], marquee=[];
+  const ring2coords=a=>{ const c=[]; for(let k=0;k<a.length;k+=2) c.push([a[k],a[k+1]]); return c; };
+  const prop=o=>{ const p=NEON_PAL[o.ci||0]; return {c:p[0],l:p[1]}; };
+  if(ZONES) for(const z of ZONES){ const sticker=STICKER_NAMES.has(z.n); for(const a of z.r){
+    const f={type:'Feature',properties:sticker?{}:prop(z),geometry:{type:'LineString',coordinates:ring2coords(a)}};
+    (sticker?marquee:solid).push(f); } }
+  for(const c of CIRC){
+    const ring=[], kx=111.32*Math.cos(c.lat*D2R), ca=Math.cos(c.ang), sa=Math.sin(c.ang);
+    for(let i=0;i<=48;i++){ const t=i/48*TAU, u=Math.cos(t)*c.a, v=Math.sin(t)*c.b; ring.push([c.lon+(u*ca-v*sa)/kx,c.lat+(u*sa+v*ca)/110.57]); }
+    solid.push({type:'Feature',properties:prop(c),geometry:{type:'LineString',coordinates:ring}});
+  }
+  return {solid:{type:'FeatureCollection',features:solid},marquee:{type:'FeatureCollection',features:marquee}};
+}
+function setMusicBorderData(){ const fc=musicBorderFC(); const a=map.getSource('musb'), b=map.getSource('musm'); if(a) a.setData(fc.solid); if(b) b.setData(fc.marquee); }
+const NEON=['musb-glow2','musb-glow','musb-core','musm-glow2','musm-glow','musm-core'];
+// 跑馬燈：沿著外框（line-progress 0→1）重複三輪彩虹，phase 每次更新往前推
+function rainbowGradient(phase,light){
+  const st=['interpolate',['linear'],['line-progress']];
+  for(let i=0;i<=24;i++){ const p=i/24; st.push(p,hsl((p*3*360+phase)%360,100,light)); }
+  return st;
+}
 function addMusicBorders(){
   if(map.getSource('musb')) return;
-  const layers=map.getStyle().layers, firstSym=(layers.find(l=>l.type==='symbol')||{}).id;
-  map.addSource('musb',{type:'geojson',data:musicBorderFC()});
+  const layers=map.getStyle().layers, firstSym=(layers.find(l=>l.type==='symbol')||{}).id, fc=musicBorderFC();
+  map.addSource('musb',{type:'geojson',data:fc.solid});
+  map.addSource('musm',{type:'geojson',data:fc.marquee,lineMetrics:true});
   const lay={'line-join':'round','line-cap':'round'}, wz=(a,b)=>['interpolate',['linear'],['zoom'],2,a,8,b];
-  // 三層疊出霓虹燈管：最外面寬而模糊的光暈、中間的亮粉紅、最裡面接近白色的燈芯
-  const col=(big,small)=>['match',['get','k'],'small',small,big];
-  map.addLayer({id:'musb-glow2',type:'line',source:'musb',layout:lay,paint:{'line-color':col('#ff1f8f','#9b3dff'),'line-width':wz(9,22),'line-blur':wz(7,16),'line-opacity':0.3}},firstSym);
-  map.addLayer({id:'musb-glow',type:'line',source:'musb',layout:lay,paint:{'line-color':col('#ff4fb0','#b86bff'),'line-width':wz(3.5,7),'line-blur':wz(1.5,3),'line-opacity':0.7}},firstSym);
-  map.addLayer({id:'musb-core',type:'line',source:'musb',layout:lay,paint:{'line-color':col('#ffe3f3','#efe0ff'),'line-width':wz(1,1.8),'line-opacity':0.9}},firstSym);
+  // 三層疊出霓虹燈管：最外面寬而模糊的光暈、中間的彩色燈管、最裡面接近白色的燈芯
+  map.addLayer({id:'musb-glow2',type:'line',source:'musb',layout:lay,paint:{'line-color':['get','c'],'line-width':wz(9,22),'line-blur':wz(7,16),'line-opacity':0.3}},firstSym);
+  map.addLayer({id:'musb-glow',type:'line',source:'musb',layout:lay,paint:{'line-color':['get','c'],'line-width':wz(3.5,7),'line-blur':wz(1.5,3),'line-opacity':0.7}},firstSym);
+  map.addLayer({id:'musb-core',type:'line',source:'musb',layout:lay,paint:{'line-color':['get','l'],'line-width':wz(1,1.8),'line-opacity':0.9}},firstSym);
+  map.addLayer({id:'musm-glow2',type:'line',source:'musm',layout:lay,paint:{'line-gradient':rainbowGradient(0,60),'line-width':wz(10,24),'line-blur':wz(7,16),'line-opacity':0.35}},firstSym);
+  map.addLayer({id:'musm-glow',type:'line',source:'musm',layout:lay,paint:{'line-gradient':rainbowGradient(0,62),'line-width':wz(4,8),'line-blur':wz(1.5,3),'line-opacity':0.8}},firstSym);
+  map.addLayer({id:'musm-core',type:'line',source:'musm',layout:lay,paint:{'line-gradient':rainbowGradient(0,88),'line-width':wz(1.2,2),'line-opacity':0.95}},firstSym);
   applyMusicBorders();
 }
 function applyMusicBorders(){
-  const v=MUS.on?'visible':'none';
+  const v=S.musb?'visible':'none';
+  $('#bMusb').setAttribute('aria-pressed',S.musb); $('#musbLbl').textContent=S.musb?'顯示':'隱藏';
   for(const id of NEON) if(map.getLayer(id)) map.setLayoutProperty(id,'visibility',v);
 }
-// 霓虹燈效果：約 2.6 秒一次的呼吸，偶爾像接觸不良一樣快速閃一下（每 0.1 秒更新一次，避免整張地圖一直重畫）
+// 霓虹燈效果：約 2.6 秒一次的呼吸，偶爾像接觸不良一樣快速閃一下；跑馬燈的彩虹沿著外框流動
+// （每 0.1 秒更新一次，避免整張地圖一直重畫）
 let neonT=0, neonFlick=0;
 function updNeon(now){
-  if(!MUS.on||now-neonT<100||!map.getLayer('musb-core')) return; neonT=now;
+  if(!S.musb||now-neonT<100||!map.getLayer('musb-core')) return; neonT=now;
   if(neonFlick<=0&&Math.random()<0.012) neonFlick=3+Math.floor(Math.random()*4);
   let k=0.6+0.4*Math.sin(now/2600*TAU);
   if(neonFlick>0){ neonFlick--; k=neonFlick%2?0.15:1; }
   // 拉遠時（看整個國家）只剩三成亮度，放大到 zoom 6 以上才完整發亮，不然一整片小光點很雜
   const op=v=>['interpolate',['linear'],['zoom'],3,v*0.3,6,v];
-  map.setPaintProperty('musb-glow2','line-opacity',op(0.12+0.3*k));
-  map.setPaintProperty('musb-glow','line-opacity',op(0.3+0.5*k));
-  map.setPaintProperty('musb-core','line-opacity',op(0.45+0.5*k));
+  for(const p of ['musb','musm']){
+    map.setPaintProperty(p+'-glow2','line-opacity',op(0.12+0.3*k));
+    map.setPaintProperty(p+'-glow','line-opacity',op(0.3+0.5*k));
+    map.setPaintProperty(p+'-core','line-opacity',op(0.45+0.5*k));
+  }
+  const ph=(now/12)%360; // 約 4 秒流動一整輪顏色
+  map.setPaintProperty('musm-glow2','line-gradient',rainbowGradient(ph,60));
+  map.setPaintProperty('musm-glow','line-gradient',rainbowGradient(ph,62));
+  map.setPaintProperty('musm-core','line-gradient',rainbowGradient(ph,88));
 }
 function nextTrack(region){
   if(String(region).startsWith('tw')&&PL.tw.length){ PL.twIdx=(PL.twIdx+1)%PL.tw.length; return PL.tw[PL.twIdx]; }
@@ -1417,13 +1615,17 @@ function updMusic(now,dtR){
   }
 }
 function setMusic(on){
-  MUS.on=on; $('#bMus').setAttribute('aria-pressed',on); applyMusicBorders(); if(on) loadZones();
+  MUS.on=on; $('#bMus').setAttribute('aria-pressed',on); if(on) loadZones();
   if(PL.synth||!(PL.tw.length+PL.rest.length)) setSynth(on);
   else if(on){ if(!PL.el||!PL.region) playTrack(musRegion()); else { PL.el.play().catch(()=>{}); PL.target=MP3_VOL*duck(); } }
   else PL.target=0;
-  if(on&&!setMusic.told){ setMusic.told=true; toast('♫ 發光的霓虹圈是音樂區（粉紅＝大風場、紫色＝小風車群），地圖中心移進另一圈就會換歌',4500); }
+  if(on&&!setMusic.told){ setMusic.told=true; toast('♫ 霓虹圈是音樂區，有貼紙的風場是七彩跑馬燈；地圖中心移進另一圈就會換歌',4500); }
 }
 $('#bMus').onclick=()=>setMusic(!MUS.on);
+// 音樂圈預設顯示（右邊的「音樂圈」鈕可以關掉）；資料在網頁開好後才下載
+S.musb=true; try{ if(localStorage.getItem('windglobe-musb')==='0') S.musb=false; }catch(e){}
+$('#bMusb').onclick=()=>{ S.musb=!S.musb; try{localStorage.setItem('windglobe-musb',S.musb?'1':'0');}catch(e){} if(S.musb) loadZones(); applyMusicBorders(); };
+setTimeout(()=>{ if(S.musb) loadZones(); },2500);
 
 /* ================= 3D 風場（three.js）＋ 吹風發電遊戲 ================= */
 let THREE_P=null;
@@ -1433,7 +1635,15 @@ function loadThree(){
   THREE_P=new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';s.onload=()=>res();s.onerror=()=>{THREE_P=null;rej(new Error('3D 元件載入失敗，請檢查網路後再試一次'));};document.head.appendChild(s);});
   return THREE_P;
 }
-const V3={open:false,r:null,scene:null,cam:null,turbs:[],houses:[],lights:[],az:0.35,el:0.32,dist:1000,R:500,boost:0,blowing:false,spin:0,full:0,done:false,last:0,idle:0,water:null,wbase:null,streak:null,spec:null,night:false};
+// 3D 場景與遊戲在 assets/game3d.js（第一次進 3D 才載入）；這裡準備風機位置、真實海岸線與地形種類
+const V3={open:false,spec:null,nightOverride:null};
+let G3_P=null;
+function loadGame3D(){
+  if(window.WindGame3D) return Promise.resolve();
+  if(G3_P) return G3_P;
+  G3_P=new Promise((res,rej)=>{const s=document.createElement('script');s.src='assets/game3d.js?v=20261022t';s.onload=()=>res();s.onerror=()=>{G3_P=null;rej(new Error('3D 遊戲載入失敗，請檢查網路後再試一次'));};document.head.appendChild(s);});
+  return G3_P;
+}
 function nearPts(lon,lat,km){
   const out=[], cosl=Math.cos(lat*D2R);
   const add=(plon,plat,D,hh,off)=>{const dx=(plon-lon)*111.32*cosl, dy=(plat-lat)*110.57, d=Math.hypot(dx,dy); if(d<km) out.push({lon:plon,lat:plat,D,hh,off,d});};
@@ -1449,7 +1659,10 @@ function nearPts(lon,lat,km){
 function specForFarm(f){
   let pts;
   if(f.tur) pts=f.tur.map(t=>({lon:t.lon,lat:t.lat,D:t.D||f.D,hh:t.hh||f.hh}));
-  else pts=nearPts(f.lon,f.lat,15);
+  else{ // 圖鑑中心點是約略位置：附近找不到時，找遠一點的最近一支，再以它為中心抓周圍的風機
+    pts=nearPts(f.lon,f.lat,15);
+    if(!pts.length){ const far=nearPts(f.lon,f.lat,40); if(far.length) pts=nearPts(far[0].lon,far[0].lat,8); }
+  }
   return {title:f.n.replace(/（.*?）/,''),off:f.k!=='on',lon:f.lon,lat:f.lat,pts,farm:f};
 }
 function specHere(){
@@ -1457,11 +1670,6 @@ function specHere(){
   const off=pts.filter(p=>p.off).length>pts.length/2;
   return {title:'這附近的風機',off,lon:cLon,lat:cLat,pts,farm:null};
 }
-function v3Wind(){
-  const sp=V3.spec; if(sp.farm) return sp.farm.ws;
-  const w=windAt(sp.lon,sp.lat,simSec); return Math.max(0,Math.hypot(w[0],w[1])*(sp.off?1.2:1.05)+(sp.off?3.2:2.2));
-}
-function disposeScene(sc){ sc.traverse(o=>{ if(o.geometry) o.geometry.dispose(); if(o.material){ (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose()); } }); }
 let LANDSRC=null;
 function clipBox(pts,B){
   let out=pts;
@@ -1485,148 +1693,120 @@ function landRings(lon0,lat0,cl,Rv){
   }
   return out;
 }
+// 地形種類：海上（台灣海峽、北海、其他）、沙漠、雪地、山區（海拔 500 公尺以上）、草原農田
+const DESERTS=[[75,36,106,46],[-17,14,60,33],[44,12,60,30],[-118,31,-103,37],[-72,-30,-68,-18],[118,-32,140,-22]];
+function biomeFor(lon,lat,off){
+  if(off){
+    if(lon>=118&&lon<=123&&lat>=21&&lat<=26.5) return 'taiwan';
+    if(lat>=48&&lat<=66&&lon>=-12&&lon<=32) return 'northsea';
+    return 'sea';
+  }
+  if(lat>=58||lat<=-50) return 'snow';
+  if(DESERTS.some(b=>lon>=b[0]&&lon<=b[2]&&lat>=b[1]&&lat<=b[3])) return 'desert';
+  // 山區看高低落差（附近 3 公里內落差超過 120 公尺），或海拔超過 1500 公尺；高原上的平地（例如德州）算草原
+  let e=null, relief=0;
+  try{ if(map.getTerrain()){ const q=(dx,dy)=>map.queryTerrainElevation([lon+dx,lat+dy]);
+    e=q(0,0); if(e!=null){ const es=[e,q(0.03,0),q(-0.03,0),q(0,0.03),q(0,-0.03)].filter(v=>v!=null); relief=(Math.max(...es)-Math.min(...es))/1.4; } } }catch(err){}
+  if(e!=null&&(relief>120||e/1.4>1500)) return 'mountain';
+  if(e==null&&lon>=120.55&&lon<=121.5&&lat>=22.4&&lat<=24.9) return 'mountain'; // 沒開地形時，台灣中央山脈一帶
+  return 'grass';
+}
+// 3D 場景的地面：在畫面外開一張跟平面地圖同樣底圖的地圖，截成貼圖（遠景＋風機附近的近景）；
+// 近景順便從圖磚取出建築物輪廓與高度，3D 裡蓋成立體房子。海上場景把海面塗成洋紅色再挖空，讓 3D 海浪露出來
+let capMap=null, capEl=null, capReady=null;
+const CAP_PX=2048, KEY_RGB=[255,0,255];
+function capInit(){
+  if(capReady) return capReady;
+  capEl=document.createElement('div');
+  capEl.style.cssText=`position:fixed;left:-${CAP_PX*2}px;top:0;width:${CAP_PX}px;height:${CAP_PX}px;pointer-events:none`;
+  document.body.append(capEl);
+  capMap=new maplibregl.Map({container:capEl,style:STYLE_URL.light,center:[121,23.5],zoom:10,interactive:false,attributionControl:false,
+    fadeDuration:0,pixelRatio:1,canvasContextAttributes:{preserveDrawingBuffer:true},
+    localIdeographFontFamily:'"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif'});
+  capReady=new Promise(res=>capMap.once('style.load',()=>{
+    for(const l of capMap.getStyle().layers){
+      if(l.type!=='symbol') continue;
+      const tf=capMap.getLayoutProperty(l.id,'text-field');
+      if(tf&&JSON.stringify(tf).includes('name')) capMap.setLayoutProperty(l.id,'text-field',ZH_NAME);
+    }
+    res();
+  }));
+  return capReady;
+}
+let capWaterOrig=null;
+function capWater(key){
+  const layers=capMap.getStyle().layers;
+  if(!capWaterOrig){ capWaterOrig={}; for(const l of layers) if(l['source-layer']==='water'&&l.type==='fill') capWaterOrig[l.id]=capMap.getPaintProperty(l.id,'fill-color')||'#a0c8f0'; }
+  for(const l of layers){
+    if(l.id==='natural_earth') capMap.setLayoutProperty(l.id,'visibility',key?'none':'visible');
+    if(capWaterOrig[l.id]!=null) capMap.setPaintProperty(l.id,'fill-color',key?'#ff00ff':capWaterOrig[l.id]);
+  }
+}
+function capIdle(ms=9000){ return new Promise(res=>{ let done=false; const fin=()=>{ if(!done){ done=true; res(); } }; capMap.once('idle',fin); setTimeout(fin,ms); capMap.triggerRepaint(); }); }
+// 讓 CAP_PX 像素剛好涵蓋 spanM 公尺的縮放等級（MapLibre 圖磚 512 像素）
+const capZoom=(spanM,lat)=>Math.log2(40075016.686*Math.cos(lat*D2R)*CAP_PX/(512*spanM));
+function capShot(key,lon0,lat0,cl){
+  const src=capMap.getCanvas(), c=document.createElement('canvas'); c.width=src.width; c.height=src.height;
+  const g=c.getContext('2d'); g.drawImage(src,0,0);
+  if(key){ // 洋紅色（海）挖成透明，邊緣反鋸齒的像素依接近程度給半透明
+    const im=g.getImageData(0,0,c.width,c.height), d=im.data;
+    for(let i=0;i<d.length;i+=4){ const dr=d[i]-255, dg=d[i+1], db=d[i+2]-255, dist=Math.sqrt(dr*dr+dg*dg+db*db);
+      if(dist<150) d[i+3]=dist<60?0:Math.round((dist-60)/90*255); }
+    g.putImageData(im,0,0);
+  }
+  const b=capMap.getBounds();
+  return {img:c, x0:(b.getWest()-lon0)*111320*cl, x1:(b.getEast()-lon0)*111320*cl, z0:-(b.getNorth()-lat0)*110574, z1:-(b.getSouth()-lat0)*110574};
+}
+async function captureGround(lon0,lat0,cl,halfM,sea,near){
+  await capInit();
+  capWater(sea);
+  const span=Math.min(halfM*2,40000);
+  capMap.jumpTo({center:[lon0,lat0],zoom:capZoom(span,lat0),bearing:0,pitch:0});
+  await capIdle(); const far=capShot(sea,lon0,lat0,cl);
+  // 近景：風機最密集處附近約 5 公里見方，看得到道路、地名和建築
+  capMap.jumpTo({center:[near[0],near[1]],zoom:capZoom(5000,near[1])});
+  await capIdle(); const nearShot=capShot(sea,lon0,lat0,cl);
+  const buildings=[], seen=new Set();
+  for(const f of capMap.querySourceFeatures('openmaptiles',{sourceLayer:'building'})){
+    const id=f.id!=null?f.id:JSON.stringify(f.geometry.coordinates[0]&&f.geometry.coordinates[0][0]);
+    if(seen.has(id)) continue; seen.add(id);
+    const polys=f.geometry.type==='Polygon'?[f.geometry.coordinates]:f.geometry.type==='MultiPolygon'?f.geometry.coordinates:[];
+    const h=+f.properties.render_height||+f.properties.height||8, h0=+f.properties.render_min_height||0;
+    for(const p of polys){ const ring=p[0]; if(!ring||ring.length<4) continue;
+      buildings.push({h:Math.max(3,h-h0),ring:ring.map(c=>[(c[0]-lon0)*111320*cl,-(c[1]-lat0)*110574])}); }
+    if(buildings.length>=1500) break;
+  }
+  return {far,near:nearShot,buildings};
+}
 async function open3D(spec){
   if(!spec.pts||!spec.pts.length){ toast('這附近沒有風機資料，換個地方試試看'); return; }
+  gamePause();
   toast('正在準備 3D 風場…',1500);
-  try{ await loadThree(); }catch(e){ toast(e.message); return; }
-  const T=THREE, el=$('#v3d'); el.hidden=false; document.body.classList.add('v3on');
-  V3.spec=spec; V3.open=true; V3.boost=0; V3.done=false; V3.full=0; V3.spin=0.5; V3.idle=0;
-  if(!V3.r){ V3.r=new T.WebGLRenderer({canvas:$('#c3d'),antialias:true}); V3.r.setPixelRatio(Math.min(2,window.devicePixelRatio||1)); }
-  if(V3.scene) disposeScene(V3.scene);
-  const sc=new T.Scene(); V3.scene=sc; V3.turbs=[]; V3.houses=[]; V3.lights=[];
+  try{ await loadThree(); await loadGame3D(); }catch(e){ toast(e.message); return; }
+  V3.spec=spec;
   const lon0=d3.mean(spec.pts,p=>p.lon), lat0=d3.mean(spec.pts,p=>p.lat), cl=Math.cos(lat0*D2R);
-  const pos=spec.pts.map(p=>({x:(p.lon-lon0)*111320*cl, z:-(p.lat-lat0)*110574, D:p.D, hh:p.hh}));
-  let R=300; for(const p of pos) R=Math.max(R,Math.hypot(p.x,p.z)); V3.R=R;
+  const pts=spec.pts.map(p=>({x:(p.lon-lon0)*111320*cl, z:-(p.lat-lat0)*110574, D:p.D, hh:p.hh}));
+  let R=300; for(const p of pts) R=Math.max(R,Math.hypot(p.x,p.z));
+  const biome=biomeFor(lon0,lat0,spec.off);
   const sun=sunPos(S.simT), sunAlt=90-d3.geoDistance([sun[0],sun[1]],[lon0,lat0])/D2R;
-  V3.night=V3.nightOverride!=null?V3.nightOverride:sunAlt<-4;
-  const sky=V3.night?0x1b2f63:(sunAlt<8?0xf3b59a:0x9fd4ff);
-  sc.background=new T.Color(sky); sc.fog=new T.Fog(sky,R*1.2+1500,R*7+9000);
-  sc.add(new T.HemisphereLight(V3.night?0x6f86c8:0xffffff,V3.night?0x18233a:0x557755,V3.night?0.8:0.65));
-  const dl=new T.DirectionalLight(V3.night?0xaec0ff:0xfff2dd,V3.night?0.5:0.75); dl.position.set(-0.6,1,0.5); sc.add(dl);
-  const size=R*8+16000, LANDY=6, Rv=size/2;
-  const rings=landRings(lon0,lat0,cl,Rv);
-  const pip=(x,z)=>{const y=-z; for(const r of rings){ let ins=false; for(let i=0,j=r.length-1;i<r.length;j=i++){const xi=r[i][0],yi=r[i][1],xj=r[j][0],yj=r[j][1]; if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi)) ins=!ins;} if(ins) return true; } return false;};
-  const gg=new T.PlaneGeometry(size,size,90,90); gg.rotateX(-Math.PI/2);
-  sc.add(new T.Mesh(gg,new T.MeshPhongMaterial({color:V3.night?0x1a4677:0x2f78b8,shininess:70,flatShading:true})));
-  V3.water=gg; V3.wbase=Float32Array.from(gg.attributes.position.array);
-  const landM=new T.MeshLambertMaterial({color:V3.night?0x2c4a2e:0x5f8a3f,side:T.DoubleSide});
-  for(const r of rings){ if(r.length<3) continue; const sg=new T.ShapeGeometry(new T.Shape(r.map(p=>new T.Vector2(p[0],p[1])))); sg.rotateX(-Math.PI/2); const m=new T.Mesh(sg,landM); m.position.y=LANDY; sc.add(m); }
-  for(const p of pos) p.land=pip(p.x,p.z);
-  { const tg=new T.ConeGeometry(14,40,6); tg.translate(0,20,0); const tm=new T.MeshLambertMaterial({color:V3.night?0x1e3d22:0x3f8a3a});
-    const rr=mulberry32(99); let nt=0;
-    for(let i=0;i<1200&&nt<260;i++){ const x=(rr()-0.5)*R*5-0, z=(rr()-0.5)*R*5; if(!pip(x,z)) continue; if(pos.some(p=>Math.abs(p.x-x)<70&&Math.abs(p.z-z)<70)) continue;
-      const t=new T.Mesh(tg,tm); t.position.set(x,LANDY,z); const s=0.7+rr()*0.9; t.scale.set(s,s,s); sc.add(t); nt++; } }
-  // 村莊：優先放在真實陸地上，陸地太遠時才用示意小島
-  let fr=pos[0]; for(const p of pos) if(p.z>fr.z) fr=p;
-  let vx=fr.x, vz=fr.z+650, onLand=false;
-  if(fr.land){ for(const k of [650,400,250]){ if(pip(fr.x,fr.z+k)){ vz=fr.z+k; onLand=true; break; } } }
-  if(!onLand){
-    let best=null,bd=5000; for(const r of rings) for(const q of r){ const d=Math.hypot(q[0]-fr.x,-q[1]-fr.z); if(d<bd){bd=d;best=q;} }
-    if(best){ const bx=best[0], bz=-best[1], dx=bx-fr.x, dz=bz-fr.z, dn=Math.hypot(dx,dz)||1;
-      for(const k of [200,400,650,1000]){ const x=bx+dx/dn*k, z=bz+dz/dn*k; if(pip(x,z)){ vx=x; vz=z; onLand=true; break; } } }
-  }
-  const island=!onLand, hy=island?4:LANDY;
-  if(island){ const isl=new T.Mesh(new T.CylinderGeometry(520,620,8,40),new T.MeshLambertMaterial({color:V3.night?0x24402a:0x7cbf63})); isl.position.set(vx,0,vz); sc.add(isl);
-    const sand=new T.Mesh(new T.CylinderGeometry(660,700,4,40),new T.MeshLambertMaterial({color:V3.night?0x5c5440:0xf1dfa8})); sand.position.set(vx,0,vz); sc.add(sand); }
-  const hb=new T.BoxGeometry(46,30,40); hb.translate(0,15,0); const hr=new T.ConeGeometry(36,22,4); hr.rotateY(Math.PI/4); hr.translate(0,41,0);
-  const roofCols=[0xd9534f,0x2f7ad6,0xf0a830,0x8a5cd6,0x3cae6b];
-  const cand=[]; for(let row=0;row<5;row++) for(let col=0;col<5;col++) cand.push([vx+(col-2)*110+(row%2?40:0), vz-200+row*120]);
-  let spots=island?cand.slice(0,12):cand.filter(c=>pip(c[0],c[1])).slice(0,12);
-  if(spots.length<6) spots=cand.slice(0,12);
-  spots.forEach((c,i)=>{
-    const m=new T.MeshLambertMaterial({color:0xf3ead8,emissive:0x000000});
-    const hs=new T.Mesh(hb,m); hs.position.set(c[0],hy,c[1]); hs.rotation.y=(rnd()-0.5)*0.4; sc.add(hs);
-    const roof=new T.Mesh(hr,new T.MeshLambertMaterial({color:roofCols[i%roofCols.length]})); roof.position.copy(hs.position); roof.rotation.y=hs.rotation.y; sc.add(roof);
-    V3.houses.push(m);
-  });
-  const cdx=vx-fr.x, cdz=vz-fr.z, cdn=Math.hypot(cdx,cdz)||1;
-  V3.camAz=Math.atan2(cdx,cdz); V3.camDist=Math.max(1100,fr.hh*13,cdn*0.9+900); V3.island=island; V3.tgt=[fr.x+cdx*0.35,fr.hh*0.5,fr.z+cdz*0.35];
-  // 風機
-  const w=windAt(lon0,lat0,simSec); const yaw=Math.atan2(-w[0],w[1]);
-  const towerG=new T.CylinderGeometry(0.6,1,1,14); towerG.translate(0,0.5,0);
-  const nacG=new T.BoxGeometry(1,1,1); const hubG=new T.SphereGeometry(1,14,10);
-  const bladeG=new T.BoxGeometry(0.075,1,0.02,1,8,1); bladeG.translate(0,0.5,0);
-  { const a=bladeG.attributes.position; for(let i=0;i<a.count;i++){const y=a.getY(i); a.setX(i,a.getX(i)*(1-0.75*y)+ (y<0.15?0:0.012*(1-y))); } a.needsUpdate=true; bladeG.computeVertexNormals(); }
-  const white=new T.MeshLambertMaterial({color:0xf4f6f8,emissive:V3.night?0x2a3346:0x000000}), yellow=new T.MeshLambertMaterial({color:0xf2c200}), red=new T.MeshBasicMaterial({color:0xff3030});
-  const redG=new T.SphereGeometry(1,8,6);
-  for(const p of pos){
-    const hh=p.hh, rad=p.D/2, g=new T.Group(); g.position.set(p.x,p.land?LANDY:0,p.z);
-    if(!p.land){ const tp=new T.Mesh(towerG,yellow); tp.scale.set(hh*0.05,hh*0.13,hh*0.05); g.add(tp); }
-    const tw=new T.Mesh(towerG,white); tw.position.y=!p.land?hh*0.13:0; tw.scale.set(hh*0.032,hh-(!p.land?hh*0.13:0),hh*0.032); g.add(tw);
-    const nac=new T.Mesh(nacG,white); nac.scale.set(hh*0.07,hh*0.07,hh*0.17); nac.position.set(0,hh,-hh*0.03); g.add(nac);
-    const rotor=new T.Group(); rotor.position.set(0,hh,hh*0.07);
-    const hub=new T.Mesh(hubG,white); hub.scale.set(hh*0.04,hh*0.04,hh*0.05); rotor.add(hub);
-    for(let k=0;k<3;k++){ const b=new T.Mesh(bladeG,white); b.scale.set(rad,rad,rad); b.rotation.z=k*TAU/3; rotor.add(b); }
-    rotor.rotation.z=rnd()*TAU; g.add(rotor);
-    const lt=new T.Mesh(redG,red); lt.scale.setScalar(hh*0.02); lt.position.set(0,hh+hh*0.045,-hh*0.06); lt.visible=V3.night; g.add(lt); V3.lights.push(lt);
-    g.rotation.y=yaw+(rnd()-0.5)*0.06; sc.add(g); V3.turbs.push({rotor,k:167/Math.max(40,p.D)});
-  }
-  // 風的線條
-  const N=140, sg=new T.BufferGeometry(), sp=new Float32Array(N*6); sg.setAttribute('position',new T.BufferAttribute(sp,3));
-  const sm=new T.LineBasicMaterial({color:0xffffff,transparent:true,opacity:0.5});
-  V3.streak={g:sg,m:sm,p:[],dir:[w[0],-w[1]]}; const dn=Math.hypot(w[0],w[1])||1; V3.streak.dir=[w[0]/dn,-w[1]/dn];
-  for(let i=0;i<N;i++) V3.streak.p.push({x:(rnd()-0.5)*R*3,y:30+rnd()*Math.max(150,R*0.12),z:(rnd()-0.5)*R*3});
-  sc.add(new T.LineSegments(sg,sm));
-  V3.cam=new T.PerspectiveCamera(50,1,5,size*1.2);
-  V3.az=V3.camAz; V3.el=0.24; V3.dist=V3.camDist; V3.target=new T.Vector3(V3.tgt[0],V3.tgt[1],V3.tgt[2]);
-  $('#v3title').textContent=spec.title; $('#v3info').textContent=`${pos.length} 支風機・海岸線依真實地圖${V3.island?'（陸地太遠，村莊小島為示意）':''}・拖曳可轉動視角，滾輪可縮放`; $('#v3dn').textContent=V3.night?'☀ 換成白天':'☾ 換成晚上';
-  $('#v3msg').textContent='今天風很小。按住「吹風」幫風車轉起來，讓村莊的燈全部亮起來！';
-  say('按住吹風按鈕，幫風車轉起來，讓村莊的燈全部亮起來！');
-  resize3D(); V3.last=performance.now(); requestAnimationFrame(loop3D);
+  const p1=lat0*D2R, p2=sun[1]*D2R, dl=(sun[0]-lon0)*D2R;
+  const sunAz=Math.atan2(Math.sin(dl)*Math.cos(p2),Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl))/D2R;
+  const night=V3.nightOverride!=null?V3.nightOverride:sunAlt<-4;
+  V3.nightOverride=null;
+  const sea=['taiwan','sea','northsea'].includes(biome);
+  // 風機最密集處（1.5 公里內鄰居最多），近景地圖與建築物以它為中心
+  let dense=spec.pts[0], best=-1;
+  for(const p of spec.pts){ let c=0; for(const q of spec.pts) if(Math.abs(q.lon-p.lon)*111.3*cl<1.5&&Math.abs(q.lat-p.lat)*110.6<1.5) c++; if(c>best){ best=c; dense=p; } }
+  let ground=null;
+  toast('正在載入 3D 地圖⋯',5000);
+  try{ ground=await captureGround(lon0,lat0,cl,(R*8+16000)/2,sea,[dense.lon,dense.lat]); }catch(e){ console.error(e); }
+  WindGame3D.open({title:spec.title,biome,night,sunAlt,sunAz,pts,wind:windAt(lon0,lat0,simSec),rings:sea?landRings(lon0,lat0,cl,(R*8+16000)/2):[],ground},
+    {toast,say,addStar,confetti,powerFrac,VCI,VCO,
+     onClose:()=>{ V3.open=false; map.triggerRepaint(); gameResume(); },
+     onNight:n=>{ V3.nightOverride=n; open3D(V3.spec); }});
+  V3.open=true;
 }
-function resize3D(){ if(!V3.r) return; const c=$('#c3d'), w=c.clientWidth||innerWidth, h=c.clientHeight||innerHeight; V3.r.setSize(w,h,false); if(V3.cam){V3.cam.aspect=w/h;V3.cam.updateProjectionMatrix();} }
-window.addEventListener('resize',()=>{ if(V3.open) resize3D(); });
-function close3D(){ V3.open=false; V3.blowing=false; $('#v3d').hidden=true; document.body.classList.remove('v3on'); map.triggerRepaint(); }
-function loop3D(now){
-  if(!V3.open) return;
-  const dt=Math.min(0.1,(now-V3.last)/1000); V3.last=now;
-  const base=2.5+0.6*Math.sin(now/1700);
-  V3.boost=V3.blowing?Math.min(21,V3.boost+dt*5.5):Math.max(0,V3.boost-dt*3);
-  const ws=base+V3.boost, cut=ws>=VCO, frac=cut?0:powerFrac(ws);
-  const rpm=cut?0:ws<VCI?0.8:Math.min(16,3+ws*0.95), target=rpm/60*TAU*1.7;
-  V3.spin+=(target-V3.spin)*Math.min(1,dt*(cut?0.9:1.6));
-  for(const t of V3.turbs) t.rotor.rotation.z-=V3.spin*t.k*dt;
-  const lit=Math.round(frac*V3.houses.length);
-  V3.houses.forEach((m,i)=>{ const on=i<lit; m.emissive.setHex(on?(V3.night?0xffb84a:0x9a6a12):0x000000); });
-  $('#v3ws').textContent=ws.toFixed(1); $('#v3pw').style.width=(frac*100)+'%'; $('#v3lit').textContent=`${lit} / ${V3.houses.length}`;
-  let msg;
-  if(cut) msg='哇！風太強了（超過每秒 25 公尺），風機自動停下來保護自己。放開按鈕，讓風小一點～';
-  else if(ws<VCI) msg='風太小了，風車只能慢慢轉。按住「吹風」幫幫它！';
-  else if(frac>=0.999) msg=ws>19?'全力發電中！風很強囉～真實的風機在風速超過每秒 25 公尺時，會自動停下來保護自己。':'全力發電中！村莊的燈全部亮了！繼續按住吹風喔～';
-  else msg=V3.blowing?`風車越轉越快了！已經點亮 ${lit} 間房子。`:`風變小了，燈一間一間暗下來…再按住吹風！`;
-  if(msg!==V3.lastMsg){ $('#v3msg').textContent=msg; V3.lastMsg=msg; }
-  if(frac>=0.999){ V3.full+=dt; if(V3.full>1.5&&!V3.done){ V3.done=true; addStar(); confetti($('#v3d')); say('太棒了！全村的燈都亮了，你是風之小勇者！'); toast('⭐ 全村都亮了！你是風之小勇者！',3500); } } else V3.full=0;
-  const t=now/1000;
-  if(V3.water){ const a=V3.water.attributes.position, b=V3.wbase; for(let i=0;i<a.count;i++){const x=b[3*i],z=b[3*i+2]; a.array[3*i+1]=Math.sin(x*0.004+t*1.2)*3+Math.cos(z*0.005+t)*2.5;} a.needsUpdate=true; }
-  if(V3.night){ const on=(t%1.5)<0.4; for(const l of V3.lights) l.visible=on; }
-  const s=V3.streak, arr=s.g.attributes.position.array, sp=ws*18*dt*3, L=12+ws*4, Rr=V3.R*1.5;
-  s.m.opacity=Math.min(0.75,0.08+ws/30);
-  s.p.forEach((q,i)=>{ q.x+=s.dir[0]*sp; q.z+=s.dir[1]*sp; if(Math.abs(q.x)>Rr||Math.abs(q.z)>Rr){ q.x=-s.dir[0]*Rr*0.95+(rnd()-0.5)*Rr*2*Math.abs(s.dir[1]); q.z=-s.dir[1]*Rr*0.95+(rnd()-0.5)*Rr*2*Math.abs(s.dir[0]); }
-    arr.set([q.x,q.y,q.z,q.x-s.dir[0]*L,q.y,q.z-s.dir[1]*L],i*6); });
-  s.g.attributes.position.needsUpdate=true;
-  V3.idle+=dt; if(V3.idle>5) V3.az+=dt*0.04;
-  const c=V3.cam, T=V3.target, ce=Math.cos(V3.el);
-  c.position.set(T.x+V3.dist*Math.sin(V3.az)*ce, T.y+V3.dist*Math.sin(V3.el), T.z+V3.dist*Math.cos(V3.az)*ce); c.lookAt(T);
-  V3.r.render(V3.scene,c);
-  requestAnimationFrame(loop3D);
-}
-{ const cv=$('#c3d'), pts=new Map(); let st=null, pinch0=null;
-  cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);V3.idle=0;
-    if(pts.size===1) st={x:e.clientX,y:e.clientY,az:V3.az,el:V3.el}; else if(pts.size===2){const [a,b]=[...pts.values()];pinch0={d:Math.hypot(a[0]-b[0],a[1]-b[1]),dist:V3.dist};st=null;}});
-  cv.addEventListener('pointermove',e=>{ if(!pts.has(e.pointerId)) return; pts.set(e.pointerId,[e.clientX,e.clientY]); V3.idle=0;
-    if(pinch0&&pts.size===2){const [a,b]=[...pts.values()];V3.dist=Math.max(150,Math.min(V3.R*6+6000,pinch0.dist*pinch0.d/Math.hypot(a[0]-b[0],a[1]-b[1])));return;}
-    if(st){V3.az=st.az-(e.clientX-st.x)*0.006;V3.el=Math.max(0.03,Math.min(1.4,st.el+(e.clientY-st.y)*0.004));}});
-  const up=e=>{pts.delete(e.pointerId);if(pts.size<2)pinch0=null;st=null;};
-  cv.addEventListener('pointerup',up); cv.addEventListener('pointercancel',up);
-  cv.addEventListener('wheel',e=>{e.preventDefault();V3.idle=0;V3.dist=Math.max(150,Math.min(V3.R*6+6000,V3.dist*Math.exp(e.deltaY*0.0012)));},{passive:false});
-  const blow=$('#v3blow');
-  const on=e=>{e.preventDefault();V3.blowing=true;blow.classList.add('on');}, off=()=>{V3.blowing=false;blow.classList.remove('on');};
-  blow.addEventListener('pointerdown',on); blow.addEventListener('pointerup',off); blow.addEventListener('pointerleave',off); blow.addEventListener('pointercancel',off);
-  document.addEventListener('keydown',e=>{ if(!V3.open) return; if(e.key===' '){e.preventDefault();e.stopImmediatePropagation();on(e);} else if(e.key==='Escape'){e.stopImmediatePropagation();close3D();} },true);
-  document.addEventListener('keyup',e=>{ if(V3.open&&e.key===' ') off(); },true);
-  $('#v3close').onclick=close3D;
-  $('#v3dn').onclick=()=>{ V3.nightOverride=!V3.night; open3D(V3.spec); };
-}
+function close3D(){ if(window.WindGame3D) WindGame3D.close(); }
 $('#p3d').onclick=()=>{ if(S.sel) open3D(specForFarm(S.sel)); };
 $('#b3d').onclick=()=>{ if(kmPx<0.15){ toast('先把地圖放大到有風機的地方，再按「3D」'); return; } open3D(specHere()); };
 updStars(); updBook();
@@ -1644,7 +1824,7 @@ resize();
 map.jumpTo({zoom:zoomForZ(1,cLat)}); applyView();
 setSpeed(2);
 appReady=true;
-window.windGlobe={frameBody,PL,setMusic,map,S,FARMS,select,flyTo,open3D,specForFarm,startFind,drawFarms,stepParticles,applyView,updViewBox,bump:()=>vv++}; // 方便在瀏覽器主控台除錯
+window.windGlobe={DOT,frameBody,PL,setMusic,map,S,FARMS,select,flyTo,open3D,specForFarm,startFind,drawFarms,stepParticles,applyView,updViewBox,bump:()=>vv++}; // 方便在瀏覽器主控台除錯
 if(styleReady) onStyle();
 requestAnimationFrame(frame);
 })().catch(e=>{ console.error(e); const el=document.getElementById('loading'); if(el){ el.hidden=false; el.textContent='載入失敗：'+e.message+'，請重新整理頁面。'; } });
