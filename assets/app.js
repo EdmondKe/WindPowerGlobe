@@ -94,40 +94,91 @@ const WCELLS=WT.cells, WAGG=WT.agg;
     for(let i=c.start;i<c.start+c.n;i++) if(keys.has(WT.xy[2*i]+','+WT.xy[2*i+1])) WT.own[i]=1; } }
 let wtLast=0;
 function wHue(fr,a){return `hsla(${195-fr*150},95%,${C.dark?62:44}%,${a})`;}
+// 畫面範圍（經緯度，含一點邊界）；拉得很遠時為 null，表示不裁切
+let BB=null;
+function updViewBox(){
+  terrZ=Math.max(0,Math.min(12,Math.floor(map.getZoom())));
+  BB=null; if(kmPx<0.05) return;
+  const b=map.getBounds(), w=b.getWest(), e=b.getEast(), s=b.getSouth(), n=b.getNorth();
+  if(e-w>=300||n-s>=150) return;
+  const mx=(e-w)*0.1+0.02, my=(n-s)*0.1+0.02;
+  BB=[w-mx,s-my,e+mx,n+my];
+}
+function inBox(lon,lat,m){
+  if(!BB) return true;
+  if(lat<BB[1]-m||lat>BB[3]+m) return false;
+  if(lon<BB[0]-m) lon+=360; else if(lon>BB[2]+m) lon-=360;
+  return lon>=BB[0]-m&&lon<=BB[2]+m;
+}
+// 地圖沒動時沿用上一幀算好的螢幕位置（vv 在地圖移動、地形載入時遞增）
+// 每支風機的地形高度查一次就存起來（MapLibre 每次換算都重查，幾千支會卡）；地形圖磚更新時清掉
+let ELEV=new Float32Array(WT.n).fill(NaN), terrZ=0;
+const FT={e:0,getElevationForLngLat(){return this.e},getElevationForLngLatZoom(){return this.e}};
+function projectElev(i,lon,lat){
+  if(!vis(lon,lat)) return null;
+  LLF.lng=wrapLon(lon); LLF.lat=lat;
+  let e=ELEV[i]; if(e!==e) e=ELEV[i]=map.terrain?map.terrain.getElevationForLngLatZoom(LLF,terrZ):0;
+  FT.e=e; const p=map.transform.locationToScreenPoint(LLF,FT);
+  return isFinite(p.x)&&p.x>=-40&&p.y>=-40&&p.x<=W+40&&p.y<=H+40?[p.x,p.y]:null;
+}
+let vv=0; const WC={vv:-1,mode:-1,list:[]}, DOTB=Array.from({length:16},()=>[]), WT_MAX=5000;
 function drawWorld(g,dtR,occ){
-  const now=performance.now();
+  const now=performance.now(), lvl=kmPx<0.25?0:kmPx<2?1:2;
   if(now-wtLast>300){
     wtLast=now;
-    for(const c of WCELLS){const w=windAt(c.cx,c.cy,simSec);c.ws=Math.hypot(w[0],w[1])*1.05+2.2;c.frac=powerFrac(c.ws);c.rpm=c.ws>=VCO?0:c.ws<VCI?0.6:Math.min(14,3+c.ws*0.95);}
-    if(kmPx>=0.25&&kmPx<2) for(const a of WAGG){const w=windAt(a.cx,a.cy,simSec);a.frac=powerFrac(Math.hypot(w[0],w[1])*1.05+2.2);}
+    for(const c of WCELLS){const w=windAt(c.cx,c.cy,simSec);c.ws=Math.hypot(w[0],w[1])*1.05+2.2;c.frac=powerFrac(c.ws);c.rpm=c.ws>=VCO?0:c.ws<VCI?0.6:Math.min(14,3+c.ws*0.95);c.fill=wHue(c.frac,0.95);}
+    if(lvl===1) for(let k=2;k<WC.list.length;k+=3){const a=WC.list[k],w=windAt(a.cx,a.cy,simSec);a.frac=powerFrac(Math.hypot(w[0],w[1])*1.05+2.2);}
   }
   if(S.playing) for(const c of WCELLS) c.ang+=c.rpm/60*TAU*dtR/1000*1.6;
-  if(kmPx<2){
-    const lvl0=kmPx<0.25, list=lvl0?WCELLS:WAGG, sc=lvl0?1:Math.min(2.2,0.6+kmPx*1.2);
+  if(WC.vv!==vv||WC.mode!==lvl){
+    const fresh=WC.mode!==lvl; WC.vv=vv; WC.mode=lvl; const L=WC.list=[];
+    if(lvl<2){
+      // 拉遠時的亮點不需要地形高度，用比較快的平面換算
+      for(const c of lvl?WAGG:WCELLS){ if(!inBox(c.cx,c.cy,0.6)) continue; const p=projectFlat(c.cx,c.cy); if(p) L.push(p[0],p[1],c); }
+      if(fresh&&lvl===1) for(let k=2;k<L.length;k+=3){const a=L[k],w=windAt(a.cx,a.cy,simSec);a.frac=powerFrac(Math.hypot(w[0],w[1])*1.05+2.2);}
+    }else{
+      // 先用經緯度挑出畫面裡的風機；太多時（例如德國北部）固定取其中一部分，不然拖曳會卡
+      const m=111*kmPx, ci=[], cc=[];
+      for(const c of WCELLS){
+        if(!inBox(c.cx,c.cy,0.6)||!vis(c.cx,c.cy)) continue;
+        const q=projRaw(c.cx,c.cy); if(!q||q[0]<-m||q[0]>W+m||q[1]<-m||q[1]>H+m) continue;
+        for(let i=c.start;i<c.start+c.n;i++){
+          if(WT.own[i]) continue;
+          if(inBox(WT.xy[2*i]/1e5,WT.xy[2*i+1]/1e5,0)){ ci.push(i); cc.push(c); }
+        }
+      }
+      const useT=S.tilt&&map.getPitch()>8, step=Math.max(1,Math.ceil(ci.length/(useT?WT_MAX*0.6:WT_MAX))); // 俯視時地形高度看不出差別；算地形比較慢，上限再低一點
+      for(let k=0;k<ci.length;k++){
+        const i=ci[k]; if(step>1&&i%step) continue;
+        const lon=WT.xy[2*i]/1e5, lat=WT.xy[2*i+1]/1e5, pp=useT?projectElev(i,lon,lat):projectFlat(lon,lat);
+        if(pp) L.push(pp[0],pp[1],i,cc[k]);
+      }
+    }
+  }
+  const L=WC.list;
+  if(lvl<2){
+    const sc=lvl?Math.min(2.2,0.6+kmPx*1.2):1, NBK=16;
+    // 依發電比例分成 16 種顏色，同色的亮點一次畫完（逐一 fill 幾千次會卡）
+    for(const b of DOTB) b.length=0;
+    for(let k=0;k<L.length;k+=3){ const c=L[k+2]; DOTB[Math.min(NBK-1,Math.floor(c.frac*NBK))].push(L[k],L[k+1],(lvl?0.9:1.2)+Math.log2(c.n+1)*(lvl?0.32:0.75)*sc); }
     g.globalCompositeOperation=C.dark?'lighter':'source-over';
-    for(const c of list){
-      const p=project(c.cx,c.cy); if(!p) continue;
-      const r=(lvl0?1.2:0.9)+Math.log2(c.n+1)*(lvl0?0.75:0.32)*sc;
-      g.fillStyle=wHue(c.frac,lvl0?0.55:0.5); g.beginPath(); g.arc(p[0],p[1],r,0,TAU); g.fill();
+    for(let q=0;q<NBK;q++){
+      const B=DOTB[q]; if(!B.length) continue;
+      g.beginPath(); for(let k=0;k<B.length;k+=3){ g.moveTo(B[k]+B[k+2],B[k+1]); g.arc(B[k],B[k+1],B[k+2],0,TAU); }
+      g.fillStyle=wHue((q+0.5)/NBK,lvl?0.5:0.55); g.fill();
     }
     g.globalCompositeOperation='source-over';
     return;
   }
-  const col=C.dark?'#f2f7fb':'#1b3446', m=111*kmPx; let icons=0;
-  for(const c of WCELLS){
-    if(!vis(c.cx,c.cy)) continue;
-    const q=projRaw(c.cx,c.cy); if(!q||q[0]<-m||q[0]>W+m||q[1]<-m||q[1]>H+m) continue;
-    const fill=wHue(c.frac,0.95);
-    for(let i=c.start;i<c.start+c.n;i++){
-      if(WT.own[i]) continue;
-      const pp=project(WT.xy[2*i]/1e5,WT.xy[2*i+1]/1e5); if(!pp) continue;
-      g.fillStyle=fill; g.fillRect(pp[0]-1.5,pp[1]-1.5,3,3);
-      if(icons>=700) continue;
-      const k=WT.cl[i]&15, off=WT.cl[i]>>4, D=DCL[k]||(off?150:90), hh=Math.max(45,D*0.65+15), trueH=hh/1000*kmPx;
-      const Hp=S.big?Math.max(trueH,18):trueH; if(!S.big&&Hp<6) continue;
-      const cs=Hp*1.1, key=Math.floor(pp[0]/cs)+','+Math.floor(pp[1]/cs); if(occ.has(key)) continue; occ.add(key);
-      drawTurbineTrue(g,pp[0],pp[1],Hp,Hp*(D/2)/hh,c.ang+i*2.399,col); icons++;
-    }
+  const col=C.dark?'#f2f7fb':'#1b3446'; let icons=0;
+  for(let k=0;k<L.length;k+=4){
+    const x=L[k], y=L[k+1], i=L[k+2], c=L[k+3];
+    g.fillStyle=c.fill||wHue(c.frac,0.95); g.fillRect(x-1.5,y-1.5,3,3);
+    if(icons>=700) continue;
+    const kk=WT.cl[i]&15, off=WT.cl[i]>>4, D=DCL[kk]||(off?150:90), hh=Math.max(45,D*0.65+15), trueH=hh/1000*kmPx;
+    const Hp=S.big?Math.max(trueH,18):trueH; if(!S.big&&Hp<6) continue;
+    const cs=Hp*1.1, key=Math.floor(x/cs)+','+Math.floor(y/cs); if(occ.has(key)) continue; occ.add(key);
+    drawTurbineTrue(g,x,y,Hp,Hp*(D/2)/hh,c.ang+i*2.399,col); icons++;
   }
 }
 
@@ -174,7 +225,7 @@ function resize(){
   W=Math.max(200,r.width); H=Math.max(200,r.height); DPR=Math.min(2,window.devicePixelRatio||1);
   for(const c of [cTrail,cFx]){c.width=Math.round(W*DPR);c.height=Math.round(H*DPR);c.style.width=W+'px';c.style.height=H+'px';}
   for(const g of [gTrail,gFx]) g.setTransform(DPR,0,0,DPR,0,0);
-  map.resize(); applyView(); initParticles();
+  map.resize(); applyView(); initParticles(); vv++;
 }
 // 讓畫面中心的比例尺變成 k（像素／公里）需要的 MapLibre 縮放等級
 function zoomForKm(k,lat){ return map.getZoom()+Math.log2(k/kmPx)+Math.log2(Math.max(0.02,Math.cos(lat*D2R))/Math.max(0.02,Math.cos(cLat*D2R))); }
@@ -215,9 +266,19 @@ function onStyle(){
   // 手機上資料來源預設收合成 ⓘ（點一下就展開，頁尾也有完整來源）
   if(innerWidth<760) setTimeout(()=>{ const a=document.querySelector('.maplibregl-ctrl-attrib.maplibregl-compact-show'); if(a) a.classList.remove('maplibregl-compact-show'); },100);
 }
+// 3D 地形要先把整張地圖畫到暫存畫面再貼到地面上，放大到街道時（圖層、建築很多）會很卡；
+// 街道等級的起伏也看不太出來，所以 zoom 14.5 以上自動暫停地形，拉遠再恢復（前後留一點緩衝避免來回切）
+let terrOn=null;
+function autoTerrain(){
+  if(!styleReady||!map.getSource('dem-tr')) return;
+  const z=map.getZoom(), want=S.tilt&&(terrOn?z<14.8:z<14.2);
+  if(want===terrOn) return;
+  terrOn=want; map.setTerrain(want?{source:'dem-tr',exaggeration:1.4}:null); vv++; ELEV.fill(NaN);
+}
+map.on('zoom',autoTerrain);
 function applyTilt(move){
   if(!styleReady) return;
-  map.setTerrain(S.tilt?{source:'dem-tr',exaggeration:1.4}:null);
+  terrOn=null; autoTerrain();
   if(move) map.easeTo(S.tilt?{pitch:kmPx>=0.3?55:kmPx>=0.05?35:0,duration:900}:{pitch:0,bearing:0,duration:900});
 }
 function applyNightVis(){ if(!map.getLayer('night')) return; for(const id of ['night','night2']) map.setLayoutProperty(id,'visibility',S.night?'visible':'none'); }
@@ -248,9 +309,12 @@ function clipLon(pts,x0,dir){ // 保留 dir*(x-x0)>=0 的一側
   return out;
 }
 let lastNightT=0;
+// 每次 setData 都會讓 MapLibre 重切圖磚、整張地圖（含 3D 建築與地形）重畫，所以限制更新頻率
+let lastNightR=0;
 function updNight(){
   if(!S.night||!map.getSource('night')||Math.abs(S.simT-lastNightT)<120000) return;
-  lastNightT=S.simT; map.getSource('night').setData(nightGeo(0)); map.getSource('night2').setData(nightGeo(-8));
+  const now=performance.now(); if(now-lastNightR<(kmPx>5?15000:4000)) return;
+  lastNightR=now; lastNightT=S.simT; map.getSource('night').setData(nightGeo(0)); map.getSource('night2').setData(nightGeo(-8));
 }
 /* ---------- 顏色 ---------- */
 let C={};
@@ -551,7 +615,8 @@ function pick(x,y){
   return best;
 }
 for(const ev of ['dragstart','zoomstart','rotatestart','pitchstart']) map.on(ev,e=>{ if(e.originalEvent) userTook(); });
-map.on('move',()=>{ if(!zenMove) clearTrails(); });
+map.on('move',()=>{ vv++; if(!zenMove) clearTrails(); });
+map.on('sourcedata',e=>{ if(e.sourceId==='dem-tr'&&e.tile){ vv++; ELEV.fill(NaN); } });
 map.on('moveend',()=>{ fly=false; });
 map.on('click',e=>{
   const x=e.point.x, y=e.point.y;
@@ -616,14 +681,14 @@ function twDayStart(ms){const t=ms+8*3600000;return t-(t%86400000)-8*3600000;}
 $('#bNow').onclick=()=>{S.simT=Date.now();};
 function toggleBtn(id,key,after){const b=$(id);b.onclick=()=>{S[key]=!S[key];b.setAttribute('aria-pressed',S[key]);after&&after();};}
 toggleBtn('#bWind','wind',()=>clearTrails());
-toggleBtn('#bNight','night',()=>{lastNightT=0;updNight();applyNightVis();});
+toggleBtn('#bNight','night',()=>{lastNightT=0;lastNightR=0;updNight();applyNightVis();});
 toggleBtn('#bLabel','labels',()=>applyLabelVis());
 toggleBtn('#bBig','big',()=>{$('#bigLbl').textContent=S.big?'放大':'等比例';});
 toggleBtn('#bTilt','tilt',()=>{$('#tiltLbl').textContent=S.tilt?'立體':'平坦';applyTilt(true);});
 $('#bView').onclick=()=>{
   S.mode=S.mode==='3d'?'2d':'3d'; $('#viewLbl').textContent=S.mode==='3d'?'地球':'平面'; $('#bView').setAttribute('aria-pressed',S.mode==='3d');
   if(styleReady) map.setProjection({type:S.mode==='3d'?'globe':'mercator'});
-  clearTrails(); setTimeout(()=>{applyView();initParticles();},50);
+  clearTrails(); setTimeout(()=>{applyView();initParticles();vv++;},50);
 };
 function applyTheme(){
   if(theme==='auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme',theme);
@@ -852,7 +917,7 @@ function updHud(now){
 }
 
 /* ---------- 主迴圈 ---------- */
-let last=performance.now();
+let last=performance.now(), windWas=true;
 function frame(now){
   const dtR=Math.min(100,now-last); last=now;
   if(S.playing){ const dts=dtR/1000*S.speeds[S.speedIdx]; S.simT+=dts*1000; simSec=S.simT/1000; stepVort(dts); }
@@ -861,9 +926,12 @@ function frame(now){
   if(S.tour&&!fly&&now>S.tourNext) tourGo();
   updateFarms(dtR);
   if(V3.open){ updSound(now); requestAnimationFrame(frame); return; }
-  applyView();
+  applyView(); updViewBox();
   updNight();
-  if(S.wind){ if(S.playing) stepParticles(); } else clearTrails();
+  // 放大到街道等級時風線幾乎不動，只剩雜點，不畫（也省下整張畫布的淡出運算）
+  const windOn=S.wind&&kmPx<300;
+  if(windOn){ if(S.playing) stepParticles(); } else if(windWas) clearTrails();
+  windWas=windOn;
   drawFarms(dtR);
   if(S.sel) rotor.setAttribute('transform',`rotate(${(S.sel.ang*180/Math.PI)%360} 55 46)`);
   if(now-lastHud>250){lastHud=now;updHud(now);}
@@ -1286,7 +1354,7 @@ resize();
 map.jumpTo({zoom:zoomForZ(1,cLat)}); applyView();
 setSpeed(2);
 appReady=true;
-window.windGlobe={map,S,FARMS,select,flyTo,open3D,specForFarm,startFind}; // 方便在瀏覽器主控台除錯
+window.windGlobe={map,S,FARMS,select,flyTo,open3D,specForFarm,startFind,drawFarms,stepParticles,applyView,updViewBox,bump:()=>vv++}; // 方便在瀏覽器主控台除錯
 if(styleReady) onStyle();
 requestAnimationFrame(frame);
 })().catch(e=>{ console.error(e); const el=document.getElementById('loading'); if(el){ el.hidden=false; el.textContent='載入失敗：'+e.message+'，請重新整理頁面。'; } });
