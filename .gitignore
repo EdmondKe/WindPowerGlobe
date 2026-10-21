@@ -1,0 +1,9 @@
+# 原始 OSM 下載檔很大（200 多 MB），不放進 repo；網站只需要 data/ 裡處理好的檔案
+WindGlobe_data/
+# 舊版單一檔案（資料都已拆到 data/）
+wind-globe.html
+# 本機工具設定
+.claude/
+__pycache__/
+.DS_Store
+Thumbs.db
