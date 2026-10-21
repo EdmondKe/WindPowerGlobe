@@ -62,7 +62,7 @@ h1{font-size:clamp(22px,3vw,30px);font-weight:900;margin:0;letter-spacing:.04em;
 .meter b{font-family:Sora,sans-serif;color:var(--text);font-size:17px;font-variant-numeric:tabular-nums}
 .bar{height:6px;border-radius:3px;background:var(--line);margin-top:4px;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--warm));transition:width .4s}
-.side{position:absolute;right:12px;top:64px;display:flex;flex-direction:column;gap:2px;background:var(--hud);border:1px solid var(--line);border-radius:14px;padding:6px 4px;z-index:3;backdrop-filter:blur(6px)}
+.side{position:absolute;right:12px;top:64px;max-height:calc(100% - 100px);overflow-y:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:2px;background:var(--hud);border:1px solid var(--line);border-radius:14px;padding:6px 4px;z-index:3;backdrop-filter:blur(6px)}
 .side button{background:none;border:0;border-radius:10px;padding:5px 8px;display:flex;flex-direction:column;align-items:center;font-size:12px;line-height:1.25;color:var(--muted);min-width:52px}
 .side button span{font-size:17px;line-height:1}
 .side button[aria-pressed="true"]{color:var(--text)}
@@ -157,7 +157,7 @@ details.src li{font-size:13px;color:var(--muted);margin:4px 0}
   .wrap{padding:10px 10px 30px}
   #map{height:62vh}
   .panel{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:58%}
-  .side{top:auto;bottom:56px;right:8px;flex-direction:column}
+  .side{top:64px;bottom:auto;right:8px;max-height:calc(100% - 110px);flex-direction:column}
   .side button{min-width:44px;padding:4px}
   .maplibregl-ctrl-bottom-left .maplibregl-ctrl-group{display:none}
   .hud-row{padding:4px 10px}

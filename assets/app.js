@@ -13,12 +13,16 @@ const SPD_LBL = ['1×','10×','60×','300×','30 分/秒','1 時/秒'];
 const STYLE_URL={light:'https://tiles.openfreemap.org/styles/liberty',dark:'https://tiles.openfreemap.org/styles/fiord'};
 const DEM_TILES=['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'];
 const THEMES=['auto','dark','light'], THEME_LBL={auto:'自動',dark:'深色',light:'淺色'};
+// 台灣範圍可疊上內政部國土測繪中心的 WMTS 圖磚（政府資料開放授權條款－第 1 版），其他地方照樣用 OpenFreeMap
+const BASES=['vector','emap','photo'], BASE_LBL={vector:'向量',emap:'電子地圖',photo:'空照'};
+const NLSC={emap:{layer:'EMAP',fmt:'jpeg',name:'臺灣通用電子地圖'},photo:{layer:'PHOTO2',fmt:'jpeg',name:'正射影像'}};
+let base='vector'; try{ const b=localStorage.getItem('windglobe-base'); if(BASES.includes(b)) base=b; }catch(e){}
 let theme='auto'; try{theme=localStorage.getItem('windglobe-theme')||'auto';}catch(e){}
 const darkMQ=matchMedia('(prefers-color-scheme: dark)');
 const isDark=()=>theme==='dark'||(theme==='auto'&&darkMQ.matches);
 let styleKey=isDark()?'dark':'light';
 const map=new maplibregl.Map({
-  container:'gl', style:STYLE_URL[styleKey], center:[121,23.5], zoom:1.3, minZoom:0, maxZoom:17.5, maxPitch:72,
+  container:'gl', style:STYLE_URL[styleKey], center:[121,23.5], zoom:1.3, minZoom:0, maxZoom:17.5, maxPitch:60,
   keyboard:false, attributionControl:false, fadeDuration:150,
   localIdeographFontFamily:'"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif'
 });
@@ -99,10 +103,17 @@ let BB=null;
 function updViewBox(){
   terrZ=Math.max(0,Math.min(12,Math.floor(map.getZoom())));
   BB=null; if(kmPx<0.05) return;
-  const b=map.getBounds(), w=b.getWest(), e=b.getEast(), s=b.getSouth(), n=b.getNorth();
-  if(e-w>=300||n-s>=150) return;
+  const b=map.getBounds(); let w=b.getWest(), e=b.getEast(), s=b.getSouth(), n=b.getNorth();
+  // 傾斜時地平線會把幾百公里外都擠進畫面上緣，只保留離中心約 2.5 個畫面寬的範圍
+  const Rkm=2.5*Math.max(W,H)/kmPx, dy=Rkm/110.6, dx=Rkm/(111.3*Math.max(0.05,Math.cos(cLat*D2R)));
+  if(e-w>=300||n-s>=150||e-w>2*dx||n-s>2*dy){ w=Math.max(w,cLon-dx); e=Math.min(e,cLon+dx); s=Math.max(s,cLat-dy); n=Math.min(n,cLat+dy); if(e-w>=300) return; }
   const mx=(e-w)*0.1+0.02, my=(n-s)*0.1+0.02;
   BB=[w-mx,s-my,e+mx,n+my];
+}
+// 某一點附近的比例尺（像素／公里）：傾斜時近處大、遠處小，風機大小依這個值
+function localKm(lon,lat){
+  const a=projFlatRaw(lon,lat), b=projFlatRaw(lon+0.001/Math.max(0.05,Math.cos(lat*D2R)),lat);
+  return a&&b?Math.hypot(b[0]-a[0],b[1]-a[1])/0.11132:kmPx;
 }
 function inBox(lon,lat,m){
   if(!BB) return true;
@@ -175,10 +186,11 @@ function drawWorld(g,dtR,occ){
     const x=L[k], y=L[k+1], i=L[k+2], c=L[k+3];
     g.fillStyle=c.fill||wHue(c.frac,0.95); g.fillRect(x-1.5,y-1.5,3,3);
     if(icons>=700) continue;
-    const kk=WT.cl[i]&15, off=WT.cl[i]>>4, D=DCL[kk]||(off?150:90), hh=Math.max(45,D*0.65+15), trueH=hh/1000*kmPx;
-    const Hp=S.big?Math.max(trueH,18):trueH; if(!S.big&&Hp<6) continue;
+    const lk=localKm(WT.xy[2*i]/1e5,WT.xy[2*i+1]/1e5), far=Math.min(1,lk/kmPx); if(far<0.3) continue;
+    const kk=WT.cl[i]&15, off=WT.cl[i]>>4, D=DCL[kk]||(off?150:90), hh=Math.max(45,D*0.65+15), trueH=hh/1000*lk;
+    const Hp=S.big?Math.max(trueH,BIG_MIN*far):trueH; if(!S.big&&Hp<6) continue;
     const cs=Hp*1.1, key=Math.floor(x/cs)+','+Math.floor(y/cs); if(occ.has(key)) continue; occ.add(key);
-    drawTurbineTrue(g,x,y,Hp,Hp*(D/2)/hh,c.ang+i*2.399,col); icons++;
+    drawTurbineTrue(g,x,y,Hp,Hp*(D/2)/hh,c.ang+i*2.399,col,farAlpha(far)); icons++;
   }
 }
 
@@ -223,8 +235,9 @@ function unproj(x,y){ const l=map.unproject([x,y]); let lon=l.lng; if(lon>180||l
 function resize(){
   const r=mapEl.getBoundingClientRect();
   W=Math.max(200,r.width); H=Math.max(200,r.height); DPR=Math.min(2,window.devicePixelRatio||1);
-  for(const c of [cTrail,cFx]){c.width=Math.round(W*DPR);c.height=Math.round(H*DPR);c.style.width=W+'px';c.style.height=H+'px';}
-  for(const g of [gTrail,gFx]) g.setTransform(DPR,0,0,DPR,0,0);
+  // 風線畫布每幀都要整張淡出，用 1 倍解析度就好（細線本來就柔和，看不出差別）
+  const sz=(c,d)=>{c.width=Math.round(W*d);c.height=Math.round(H*d);c.style.width=W+'px';c.style.height=H+'px';};
+  sz(cTrail,1); sz(cFx,DPR); gTrail.setTransform(1,0,0,1,0,0); gFx.setTransform(DPR,0,0,DPR,0,0);
   map.resize(); applyView(); initParticles(); vv++;
 }
 // 讓畫面中心的比例尺變成 k（像素／公里）需要的 MapLibre 縮放等級
@@ -261,17 +274,18 @@ function onStyle(){
   for(const id of ['night','night2']) map.addLayer({id,type:'fill',source:id,paint:{'fill-color':dark?'#000410':'#101e40','fill-opacity':dark?0.42:0.16,'fill-antialias':false}},firstSym);
   map.setSky(dark?{'sky-color':'#06131f','horizon-color':'#14304a','fog-color':'#0b1d2d','sky-horizon-blend':0.6,'horizon-fog-blend':0.5,'fog-ground-blend':0.6,'atmosphere-blend':['interpolate',['linear'],['zoom'],0,1,6,1,9,0]}
                  :{'sky-color':'#8fcbf2','horizon-color':'#e6f4fb','fog-color':'#e6f4fb','sky-horizon-blend':0.6,'horizon-fog-blend':0.5,'fog-ground-blend':0.6,'atmosphere-blend':['interpolate',['linear'],['zoom'],0,1,6,1,9,0]});
+  applyBase();
   applyTilt(false); applyNightVis(); applyLabelVis(); lastNightT=S.simT;
   $('#loading').hidden=true;
   // 手機上資料來源預設收合成 ⓘ（點一下就展開，頁尾也有完整來源）
   if(innerWidth<760) setTimeout(()=>{ const a=document.querySelector('.maplibregl-ctrl-attrib.maplibregl-compact-show'); if(a) a.classList.remove('maplibregl-compact-show'); },100);
 }
 // 3D 地形要先把整張地圖畫到暫存畫面再貼到地面上，放大到街道時（圖層、建築很多）會很卡；
-// 街道等級的起伏也看不太出來，所以 zoom 14.5 以上自動暫停地形，拉遠再恢復（前後留一點緩衝避免來回切）
+// 街道等級的起伏也看不太出來，所以 zoom 13.5 以上自動暫停地形，拉遠再恢復（前後留一點緩衝避免來回切）
 let terrOn=null;
 function autoTerrain(){
   if(!styleReady||!map.getSource('dem-tr')) return;
-  const z=map.getZoom(), want=S.tilt&&(terrOn?z<14.8:z<14.2);
+  const z=map.getZoom(), want=S.tilt&&(terrOn?z<13.8:z<13.2);
   if(want===terrOn) return;
   terrOn=want; map.setTerrain(want?{source:'dem-tr',exaggeration:1.4}:null); vv++; ELEV.fill(NaN);
 }
@@ -280,6 +294,19 @@ function applyTilt(move){
   if(!styleReady) return;
   terrOn=null; autoTerrain();
   if(move) map.easeTo(S.tilt?{pitch:kmPx>=0.3?55:kmPx>=0.05?35:0,duration:900}:{pitch:0,bearing:0,duration:900});
+}
+function applyBase(){
+  if(!styleReady) return;
+  if(map.getLayer('tw-base')) map.removeLayer('tw-base');
+  if(map.getSource('tw-base')) map.removeSource('tw-base');
+  $('#baseLbl').textContent=BASE_LBL[base]; $('#bBase').setAttribute('aria-pressed',base!=='vector');
+  const B=NLSC[base]; if(!B) return;
+  map.addSource('tw-base',{type:'raster',tileSize:256,minzoom:7,maxzoom:18,bounds:[116.2,20.4,123.6,26.8],
+    tiles:[`https://wmts.nlsc.gov.tw/wmts/${B.layer}/default/GoogleMapsCompatible/{z}/{y}/{x}`],
+    attribution:`<a href="https://maps.nlsc.gov.tw/" target="_blank">內政部國土測繪中心 ${B.name}</a>`});
+  // 電子地圖本身有文字，蓋在所有底圖圖層上面；空照沒有文字，放在 3D 建築與地名下面
+  const layers=map.getStyle().layers, before=base==='emap'?'night':(layers.find(l=>l.type==='fill-extrusion')||layers.find(l=>l.type==='symbol')||{}).id;
+  map.addLayer({id:'tw-base',type:'raster',source:'tw-base',minzoom:7,paint:{'raster-fade-duration':200,'raster-opacity':['interpolate',['linear'],['zoom'],7,0,8,1]}},map.getLayer(before)?before:undefined);
 }
 function applyNightVis(){ if(!map.getLayer('night')) return; for(const id of ['night','night2']) map.setLayoutProperty(id,'visibility',S.night?'visible':'none'); }
 function applyLabelVis(){ const v=S.labels&&!G.on?'visible':'none'; for(const id of placeLayers) if(map.getLayer(id)) map.setLayoutProperty(id,'visibility',v); }
@@ -458,10 +485,17 @@ function spawn(p,init){
   }
   p.lon=cLon+(Math.random()-0.5)*30; p.lat=Math.max(-80,Math.min(80,cLat+(Math.random()-0.5)*30)); p.age=0; p.max=30;
 }
+// 放大到看得見一支支風機時（kmPx≥2），風線減半：這時的風幾乎是同一個方向，不需要那麼多
+function partCount(){ return Math.round(Math.min(2600,Math.max(600,W*H/480))*(kmPx>=2?0.5:1)); }
 function initParticles(){
-  const n=Math.round(Math.min(2600,Math.max(600,W*H/480)));
+  const n=partCount();
   parts=new Array(n); for(let i=0;i<n;i++){parts[i]={lon:0,lat:0,age:0,max:0};spawn(parts[i],true);}
   clearTrails();
+}
+function fitParticles(){
+  const n=partCount();
+  if(parts.length>n) parts.length=n;
+  else while(parts.length<n){ const p={lon:0,lat:0,age:0,max:0}; spawn(p,true); parts.push(p); }
 }
 function clearTrails(){ gTrail.clearRect(0,0,W,H); }
 function stepParticles(){
@@ -518,7 +552,12 @@ function farmColor(f,a){
   return `hsla(${h},95%,${C.dark?62:44}%,${a})`;
 }
 let labelBoxes=[], tPick=[], EXTRA=[];
-function drawTurbineTrue(g,x,y,Hp,R,ang,col){
+// 「風機放大」時的最小高度（像素）；遠處依比例縮小、變淡
+const BIG_MIN=20;
+function farAlpha(far){ return Math.min(1,(far-0.3)/0.3); }
+function drawTurbineTrue(g,x,y,Hp,R,ang,col,alpha=1){
+  if(alpha<=0.02) return;
+  g.globalAlpha=alpha;
   g.strokeStyle=C.muted; g.lineWidth=Math.max(1,Hp*0.045);
   g.beginPath(); g.moveTo(x,y); g.lineTo(x,y-Hp); g.stroke();
   const hx=x, hy=y-Hp, w=Math.max(0.8,R*0.07);
@@ -527,19 +566,22 @@ function drawTurbineTrue(g,x,y,Hp,R,ang,col){
     g.moveTo(hx-sa*w,hy+ca*w); g.lineTo(hx+ca*R,hy+sa*R); g.lineTo(hx+sa*w,hy-ca*w);}
   g.fill();
   g.beginPath(); g.arc(hx,hy,Math.max(1.2,R*0.06),0,TAU); g.fillStyle=C.warm; g.fill();
+  g.globalAlpha=1;
 }
 function drawTrueSet(g,list,D,hh,ang0,colFn,farm,spKm,occ){
   const col=C.dark?'#f2f7fb':'#1b3446';
-  const bigH=Math.min(48,Math.max(18,(spKm||1)*kmPx*0.85));
   for(const t of list){
+    if(!inBox(t.lon,t.lat,0)) continue;
     const p=project(t.lon,t.lat); if(!p) continue;
     if(farm) tPick.push([p[0],p[1],farm]);
-    const D_=t.D||D, h_=t.hh||hh, trueH=h_/1000*kmPx;
-    g.fillStyle=colFn(t); g.beginPath(); g.arc(p[0],p[1],Math.max(1.6,Math.min(5,D_/1000*kmPx*0.05)),0,TAU); g.fill();
-    const Hp=S.big?Math.max(trueH,bigH):trueH;
+    const lk=localKm(t.lon,t.lat), far=Math.min(1,lk/kmPx);
+    const D_=t.D||D, h_=t.hh||hh, trueH=h_/1000*lk;
+    g.fillStyle=colFn(t); g.beginPath(); g.arc(p[0],p[1],Math.max(1.6,Math.min(5,D_/1000*lk*0.05)),0,TAU); g.fill();
+    if(far<0.3) continue;
+    const Hp=S.big?Math.max(trueH,BIG_MIN*far):trueH;
     if(!S.big&&Hp<6) continue;
     if(S.big&&Hp>trueH*1.05){ const cs=Hp*0.8, key=Math.floor(p[0]/cs)+','+Math.floor(p[1]/cs); if(occ.has(key)) continue; occ.add(key); }
-    drawTurbineTrue(g,p[0],p[1],Hp,Hp*(D_/2)/h_,ang0+t.ang,col);
+    drawTurbineTrue(g,p[0],p[1],Hp,Hp*(D_/2)/h_,ang0+t.ang,col,farAlpha(far));
   }
 }
 
@@ -552,7 +594,7 @@ function drawFarms(dtR){
   drawWorld(g,dtR,occ);
   g.globalCompositeOperation=C.dark?'lighter':'source-over';
   for(const f of FARMS){
-    const p=project(f.lon,f.lat); f.px=p; if(!p) continue;
+    const p=inBox(f.lon,f.lat,0.3)?project(f.lon,f.lat):null; f.px=p; if(!p) continue;
     const r=(3+Math.min(16,Math.sqrt(f.mw)*0.22))*zf;
     f.r=r;
     if(f.tur&&detailed){f.r=10;continue;}
@@ -696,6 +738,8 @@ function applyTheme(){
   const k=isDark()?'dark':'light'; document.documentElement.setAttribute('data-dark',k==='dark'?'1':'0');
   if(k!==styleKey){ styleKey=k; styleReady=false; map.setStyle(STYLE_URL[k]); }
 }
+$('#bBase').onclick=()=>{ base=BASES[(BASES.indexOf(base)+1)%BASES.length]; try{localStorage.setItem('windglobe-base',base);}catch(e){} applyBase();
+  if(base!=='vector'&&(kmPx<0.1||Math.abs(cLon-120.9)>4||Math.abs(cLat-23.7)>4)) toast(`${BASE_LBL[base]}只有台灣範圍，放大到台灣就看得到`); };
 $('#bTheme').onclick=()=>{theme=THEMES[(THEMES.indexOf(theme)+1)%3];try{localStorage.setItem('windglobe-theme',theme);}catch(e){}applyTheme();};
 darkMQ.addEventListener('change',()=>applyTheme());
 
@@ -930,7 +974,7 @@ function frame(now){
   updNight();
   // 放大到街道等級時風線幾乎不動，只剩雜點，不畫（也省下整張畫布的淡出運算）
   const windOn=S.wind&&kmPx<300;
-  if(windOn){ if(S.playing) stepParticles(); } else if(windWas) clearTrails();
+  if(windOn){ fitParticles(); if(S.playing) stepParticles(); } else if(windWas) clearTrails();
   windWas=windOn;
   drawFarms(dtR);
   if(S.sel) rotor.setAttribute('transform',`rotate(${(S.sel.ang*180/Math.PI)%360} 55 46)`);

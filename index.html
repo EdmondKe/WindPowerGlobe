@@ -47,6 +47,7 @@
       <button id="bLabel" aria-pressed="true" title="風場名稱 (L)"><span>⌖</span>標示</button>
       <button id="b3d" aria-pressed="false" title="用 3D 看這附近的風機"><span>▲</span>3D<small>風場</small></button>
       <button id="bBig" aria-pressed="true" title="風機放大顯示 (B)"><span>✣</span>風機<small id="bigLbl">放大</small></button>
+      <button id="bBase" aria-pressed="false" title="台灣底圖：向量地圖／通用電子地圖／正射影像"><span>▦</span>底圖<small id="baseLbl">向量</small></button>
       <button id="bTheme" aria-pressed="false" title="畫面亮暗"><span>◐</span>畫面<small id="themeLbl">自動</small></button>
     </div>
     <aside class="panel" id="panel" hidden>
@@ -138,6 +139,7 @@
     <li>地形陰影與立體地形：<a href="https://mapterhorn.com/attribution">© Mapterhorn</a> 高程圖磚。拉遠時的地貌陰影：<a href="https://www.naturalearthdata.com/">Natural Earth</a>（經 OpenFreeMap 提供）。</li>
     <li>全球風機位置：© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap 貢獻者</a>（ODbL 1.0），以 Overpass API 查詢 generator:source=wind 之點位，分區下載後合併、依編號去除重複，<span id="srcTurb">2026/10/21 下載</span>。拉遠時以每格經緯度內的風機數量顯示亮點，放大後顯示每一支。各支風機的葉輪直徑與輪轂高度依 OSM 標註之額定容量推估（未標註者，離岸取 150 m、陸上取 90 m），僅為示意。OSM 尚未標註的風機不會顯示。</li>
     <li>國家邊界（找找看遊戲、3D 風場海岸線）：<a href="https://www.naturalearthdata.com/">Natural Earth</a> 1:50m（公有領域），經 world-atlas（TopoJSON）轉換。</li>
+    <li>台灣底圖（「底圖」鈕切換）：<a href="https://maps.nlsc.gov.tw/">內政部國土測繪中心</a> 臺灣通用電子地圖、正射影像 WMTS 圖磚，依<a href="https://data.gov.tw/license">政府資料開放授權條款－第 1 版</a>使用。</li>
     <li>台灣陸地與縣市界（3D 風場海岸線）：<a href="https://whgis-nlsc.moi.gov.tw/">內政部國土測繪中心</a> 直轄市、縣市界線（TWD97 經緯度），依<a href="https://data.gov.tw/license">政府資料開放授權條款－第 1 版</a>使用，經 taiwan-atlas（TopoJSON）轉換。</li>
     <li>風場位置、裝置容量、機組數、啟用年份：整理自各開發商公開資料、GWEC《Global Wind Report》、經濟部能源署公開資訊及維基百科等，為約略值，部分風場仍在建置或分期運轉中。</li>
     <li>全球風場與氣旋：程式化模擬（依緯度的信風帶／西風帶／極地東風帶配置，加上隨時間移動的氣旋與反氣旋），用來呈現「風怎麼流動」，不是即時氣象觀測。</li>
