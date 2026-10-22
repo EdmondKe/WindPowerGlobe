@@ -135,6 +135,7 @@ body.zen .hud,body.zen .side,body.zen .fs,body.zen .maplibregl-ctrl{transition:o
 .chips button[aria-pressed="true"]{background:var(--text);color:var(--bg);border-color:var(--text)}
 #q{border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:10px;padding:6px 12px;font:inherit;font-size:14px;min-width:200px;flex:1;max-width:280px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.card[hidden]{display:none}
 .card{text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
 .card:hover{border-color:var(--accent)}
 .card .nm{font-weight:700;font-size:15px;line-height:1.3}

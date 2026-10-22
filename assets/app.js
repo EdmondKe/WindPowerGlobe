@@ -1301,26 +1301,43 @@ for(const f of C50){const m=mainPart(f);f.anchor=d3.geoCentroid(m);f.area=d3.geo
 const toastEl=$('#toast'); let toastT=0;
 function toast(msg,ms=2800){ toastEl.textContent=msg; toastEl.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>toastEl.classList.remove('on'),ms); }
 S.voice=true;
-// 語音：瀏覽器內建語音（不含 Google 的線上語音和男生聲音）× 4 種音調，組成選單讓人試聽挑一個
-//   瀏覽器沒有真正的兒童聲音，靠把音調拉高、語速調快變得像卡通小女孩
-const VOICE_PRESETS=[['q','Q版',2,1.08],['elf','小精靈',2,1.3],['sweet','甜甜',1.6,0.95],['plain','自然',1.15,1.0]];
-const VOICE_MALE=/Zhiwei|Kangkang|Yunxi|Yunjian|Yunyang|YunJhe|Yunxia|Danny|WanLung|Sinji|Li-mu/i;
-const VOICE_PREF=[/HsiaoYu/i,/HsiaoChen/i,/Yating/i,/Hanhan/i,/Mei-?Jia/i,/Tingting|Ting-Ting/i,/Xiaoxiao/i];
-let VOICE=null, VPRE=VOICE_PRESETS[0], voiceKey=''; try{ voiceKey=localStorage.getItem('windglobe-voice2')||''; }catch(e){}
-function zhVoices(){ return ('speechSynthesis' in window)?speechSynthesis.getVoices().filter(v=>/^(zh|cmn|yue)/i.test(v.lang)&&!/^Google/i.test(v.name)&&!VOICE_MALE.test(v.name)):[]; }
-const voiceLabel=v=>v.name.replace(/^Microsoft /,'').replace(/ Online \(Natural\)/,'（自然）').replace(/ - .*$/,'')+(/HK|yue/i.test(v.lang)?'・粵語':/TW|Hant/i.test(v.lang)?'・台灣':/CN|Hans/i.test(v.lang)?'・大陸':'');
-function pickVoice(){
-  const vs=zhVoices(); vs.sort((a,b)=>{ const r=v=>{ const i=VOICE_PREF.findIndex(re=>re.test(v.name)); return (i<0?99:i)+(/TW|Hant/i.test(v.lang)?0:50); }; return r(a)-r(b); });
-  const [vn,pk]=voiceKey.split('|');
-  VOICE=vs.find(v=>v.name===vn)||vs[0]||null; VPRE=VOICE_PRESETS.find(p=>p[0]===pk)||VOICE_PRESETS[0];
-  const sel=$('#gmVoiceSel'); if(!sel) return; sel.innerHTML=''; let n=0;
-  for(const v of vs) for(const p of VOICE_PRESETS){ const o=document.createElement('option'); o.value=v.name+'|'+p[0]; o.textContent=`${++n}. ${voiceLabel(v)}・${p[1]}`; if(v===VOICE&&p===VPRE) o.selected=true; sel.append(o); }
-  sel.hidden=!vs.length;
+// 語音：先播 voice/<聲音>/ 裡事先錄好的 mp3（微軟線上神經語音，tools/build_voice.py 產生，清單在 data/voices.json）；
+//   找不到檔案（例如沒有網路、還沒錄的句子）才改用裝置內建語音
+// 檔名是句子的 FNV-1a 雜湊（UTF-16），跟 tools/build_voice.py 的 text_key() 相同
+const textKey=s=>{ let h=0x811c9dc5; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,0x01000193)>>>0; } return h.toString(16).padStart(8,'0'); };
+let VOICES=[], voiceId=''; try{ voiceId=localStorage.getItem('windglobe-voice3')||''; }catch(e){}
+const curVoice=()=>VOICES.find(v=>v.id===voiceId)||VOICES[0]||null;
+let sayAC=null, saySrc=null, sayTok=0; const clipCache=new Map();
+function sayCtx(){ if(!sayAC){ try{ sayAC=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; } } if(sayAC.state==='suspended') sayAC.resume().catch(()=>{}); return sayAC; }
+// iPhone 要在使用者點一下時先叫醒聲音，之後計時器觸發的語音才播得出來
+addEventListener('pointerdown',()=>{ if(S.voice) sayCtx(); },{passive:true});
+async function clipBuf(v,text){
+  const k=v.id+'/'+textKey(text); if(clipCache.has(k)) return clipCache.get(k);
+  const p=fetch(`voice/${k}.mp3`).then(r=>r.ok?r.arrayBuffer():null).then(ab=>ab&&new Promise((ok,no)=>sayCtx().decodeAudioData(ab,ok,no))).catch(()=>null);
+  clipCache.set(k,p); if(clipCache.size>80) clipCache.delete(clipCache.keys().next().value); return p;
 }
-if('speechSynthesis' in window){ pickVoice(); speechSynthesis.addEventListener('voiceschanged',pickVoice); }
-function say(text){ if(!S.voice||!('speechSynthesis' in window)) return; try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text); u.lang=VOICE?VOICE.lang:'zh-TW'; if(VOICE) u.voice=VOICE;
-  u.pitch=VPRE[2]; u.rate=VPRE[3];
-  speechSynthesis.speak(u);}catch(e){} }
+// 裝置內建語音（備用）：挑台灣女生的聲音，音調調高一點
+const VOICE_PREF=[/HsiaoYu/i,/HsiaoChen/i,/Yating/i,/Hanhan/i,/Mei-?Jia/i,/Tingting|Ting-Ting/i,/Xiaoxiao/i];
+let TTSV=null;
+function pickTTS(){ const vs=('speechSynthesis' in window)?speechSynthesis.getVoices().filter(v=>/^(zh|cmn)/i.test(v.lang)&&!/^Google/i.test(v.name)):[];
+  TTSV=null; for(const re of VOICE_PREF){ TTSV=vs.find(v=>re.test(v.name)&&/TW|Hant/i.test(v.lang))||vs.find(v=>re.test(v.name)); if(TTSV) break; } if(!TTSV) TTSV=vs.find(v=>/TW/i.test(v.lang))||vs[0]||null; }
+if('speechSynthesis' in window){ pickTTS(); speechSynthesis.addEventListener('voiceschanged',pickTTS); }
+function sayTTS(text){ if(!('speechSynthesis' in window)) return; try{ const u=new SpeechSynthesisUtterance(text); u.lang=TTSV?TTSV.lang:'zh-TW'; if(TTSV) u.voice=TTSV; u.pitch=1.6; u.rate=1.05; speechSynthesis.speak(u); }catch(e){} }
+function sayStop(){ sayTok++; if(saySrc){ try{ saySrc.stop(); }catch(e){} saySrc=null; } if('speechSynthesis' in window) speechSynthesis.cancel(); }
+async function say(text){
+  if(!S.voice) return; sayStop(); const tok=sayTok, v=curVoice(), ac=v&&sayCtx();
+  const buf=ac?await clipBuf(v,text):null; if(tok!==sayTok) return;
+  if(!buf){ if(v) console.info('沒有錄好的語音，改用內建語音：',text); sayTTS(text); return; }
+  const s=ac.createBufferSource(); s.buffer=buf; s.connect(ac.destination); s.start(); saySrc=s; s.onended=()=>{ if(saySrc===s) saySrc=null; };
+}
+function fillVoiceSel(){ const sel=$('#gmVoiceSel'); if(!sel) return; sel.innerHTML='';
+  // 分成女生、男生兩組（data/voices.json 的 g）
+  for(const [g,lbl] of [['girl','女生'],['boy','男生']]){ const vs=VOICES.filter(v=>(v.g||'girl')===g); if(!vs.length) continue;
+    const og=document.createElement('optgroup'); og.label=lbl;
+    for(const v of vs){ const o=document.createElement('option'); o.value=v.id; o.textContent=`${v.name}・${v.desc}`; if(v===curVoice()) o.selected=true; og.append(o); }
+    sel.append(og); }
+  sel.hidden=!VOICES.length; }
+getJSON('data/voices.json').then(d=>{ VOICES=d.voices||[]; fillVoiceSel(); }).catch(()=>{});
 let STARS=0; try{STARS=+localStorage.getItem('windglobe-stars')||0;}catch(e){}
 function addStar(n=1){ STARS+=n; try{localStorage.setItem('windglobe-stars',STARS);}catch(e){} updStars(); }
 function updStars(){ $('#starN').textContent='⭐ '+STARS; $('#gmStars').textContent=STARS; }
@@ -1360,8 +1377,8 @@ document.addEventListener('click',e=>{ if(!gmenu.hidden&&!gmenu.contains(e.targe
 $('#gmFind').onclick=()=>{ gmenu.hidden=true; startFind(); };
 $('#gmBlow').onclick=()=>{ gmenu.hidden=true; const f=S.sel&&S.sel.tur?S.sel:byId.gch; userTook(); select(f,true); setTimeout(()=>open3D(specForFarm(f)),600); };
 $('#gmBook').onclick=()=>{ gmenu.hidden=true; updBook(); $('#book').hidden=false; };
-$('#gmVoice').onclick=()=>{ S.voice=!S.voice; $('#gmVoice').setAttribute('aria-pressed',S.voice); $('#gmVoice').textContent=S.voice?'語音朗讀：開':'語音朗讀：關'; };
-$('#gmVoiceSel').onchange=e=>{ voiceKey=e.target.value; try{localStorage.setItem('windglobe-voice2',voiceKey);}catch(err){} pickVoice(); $('#gmVoiceTry').click(); };
+$('#gmVoice').onclick=()=>{ S.voice=!S.voice; if(!S.voice) sayStop(); $('#gmVoice').setAttribute('aria-pressed',S.voice); $('#gmVoice').textContent=S.voice?'語音朗讀：開':'語音朗讀：關'; };
+$('#gmVoiceSel').onchange=e=>{ voiceId=e.target.value; try{localStorage.setItem('windglobe-voice3',voiceId);}catch(err){} $('#gmVoiceTry').click(); };
 $('#gmVoiceTry').onclick=()=>{ const v=S.voice; S.voice=true; say('你好，我是風車地球的小幫手！一起來看風車吧！'); S.voice=v; };
 
 /* ================= 遊戲一：找找看 ================= */
@@ -1464,7 +1481,7 @@ async function doCheckIn(lon,lat,acc){
   if(!near.length){
     const far=nearPts(lon,lat,80);
     const msg=far.length?`你附近 2 公里內沒有風車，最近的一支在 ${far[0].d.toFixed(1)} 公里外，走近一點再打卡！`:'你附近沒有風車資料，到有風車的地方再打卡吧！';
-    toast('📍 '+msg,5000); say(msg); return;
+    toast('📍 '+msg,5000); say(far.length?'你附近 2 公里內沒有風車，走近一點再打卡！':msg); return;
   }
   const t=near[0], r=regionAtLL(t.lon,t.lat);
   const key=r?r.key:`p${t.lon.toFixed(3)},${t.lat.toFixed(3)}`, name=r?r.name:'這裡的風車';
@@ -1475,7 +1492,7 @@ async function doCheckIn(lon,lat,acc){
   CHECKS.push({key,name,lon:t.lon,lat:t.lat,t:Date.now(),m,acc:Math.round(acc||0)});
   applySkins(); addStar(); confetti($('#map')); updBook();
   const msg=`打卡成功！${name}的風車全部變成七彩版了！`;
-  toast('📍 '+msg,5000); say(msg);
+  toast('📍 '+msg,5000); say('打卡成功！這裡的風車全部變成七彩版了！');
 }
 $('#bCheck').onclick=()=>{
   if(!navigator.geolocation){ toast('這個瀏覽器沒辦法定位，換手機的瀏覽器試試看'); return; }

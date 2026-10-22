@@ -37,6 +37,17 @@ jobs:
         run: python tools/build_typhoons.py
         continue-on-error: true
 
+      # 小幫手的語音：沿用上次錄好的檔案（快取），只補錄新增的句子；失敗時網站改用裝置內建語音
+      - uses: actions/cache@v6
+        with:
+          path: voice
+          key: voice-${{ github.run_id }}
+          restore-keys: voice-
+
+      - name: 錄製小幫手語音
+        run: pip install edge-tts && python tools/build_voice.py
+        continue-on-error: true
+
       - uses: actions/configure-pages@v6
 
       - uses: actions/upload-pages-artifact@v5

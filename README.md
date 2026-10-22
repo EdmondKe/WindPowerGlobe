@@ -22,6 +22,8 @@ data/countries-50m.json  國界（找找看、3D 海岸線）
 data/taiwan-counties.json  台灣縣市界（3D 海岸線）
 tools/build_turbines.py  把 Overpass 下載的 GeoJSON 轉成 turbines.bin.gz
 tools/build_wind.py      下載 NOAA GFS 即時風場，轉成 data/wind.bin.gz（GitHub Actions 每 6 小時執行）
+tools/build_voice.py     把小幫手要唸的句子錄成 voice/*.mp3（GitHub Actions 發布前執行）
+data/voices.json         小幫手可以選的聲音
 tools/build_typhoons.py  從 GDACS 下載全球正在活動的颱風、颶風、氣旋（GitHub Actions 每 6 小時執行）
 .github/workflows/pages.yml  發布網站到 GitHub Pages，並先下載最新風場
 ```
@@ -86,6 +88,18 @@ python tools/build_wind.py
 `tools/build_typhoons.py` 從 GDACS 下載全球正在活動的熱帶氣旋（實測路徑＋約 5 天預報），GitHub Actions 每 6 小時跟風場一起更新。
 風速換算成 10 分鐘平均風後，依中央氣象署標準分級，颱風寶寶跟著換顏色和表情：熱帶性低氣壓（淡藍、睡覺）、輕度（黃、開心）、中度（橘、用力吹）、強烈（紅、生氣）。
 西北太平洋颱風的中文名寫在 `data/typhoon-names.json`，有新颱風時可以自己加一行（例如 `"CHAMPI": "薔琵"`），沒有的就顯示英文名。
+
+## 小幫手的語音
+
+遊戲裡唸的話用微軟線上神經語音（Edge「大聲朗讀」的同一套）事先錄好：聲音清單在 `data/voices.json`（女生：曉臻、曉伊、曉曉、雲夏、曉妮，都是可愛版；男生：雲夏、雲希、雲哲、雲健是原聲，雲龍是廣東話可愛版；曉臻是預設），
+`tools/build_voice.py` 依網站的程式列出所有句子（約 230 句）並錄成 `voice/<聲音>/<雜湊>.mp3`。這個資料夾由 GitHub Actions 在發布前產生（有快取，只補錄新句子），不放進 git。本機想測試時：
+
+```bash
+pip install edge-tts
+python tools/build_voice.py
+```
+
+找不到錄好的句子時，網站會改用裝置內建的語音。新增要唸的句子時，記得也加進 `tools/build_voice.py` 的 `lines()`。
 
 ## 手機與平板
 

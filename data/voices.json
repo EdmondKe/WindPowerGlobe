@@ -1,0 +1,15 @@
+{
+ "_note": "網站小幫手的聲音。edge 是微軟線上神經語音的名稱，pitch／rate 讓聲音更可愛（沒寫就是原聲）；g 是選單分組（girl／boy），各組第一個是那一組的預設，整個清單第一個是網站預設。改了之後要重跑 tools/build_voice.py。",
+ "voices": [
+  {"id": "hsiaochen", "g": "girl", "name": "曉臻", "desc": "台灣口音", "edge": "zh-TW-HsiaoChenNeural", "pitch": "+25Hz", "rate": "+8%"},
+  {"id": "xiaoyi", "g": "girl", "name": "曉伊", "desc": "卡通小女孩", "edge": "zh-CN-XiaoyiNeural", "pitch": "+25Hz", "rate": "+8%"},
+  {"id": "xiaoxiao", "g": "girl", "name": "曉曉", "desc": "自然", "edge": "zh-CN-XiaoxiaoNeural", "pitch": "+25Hz", "rate": "+8%"},
+  {"id": "yunxia", "g": "girl", "name": "雲夏", "desc": "卡通・可愛版", "edge": "zh-CN-YunxiaNeural", "pitch": "+25Hz", "rate": "+8%"},
+  {"id": "xiaoni", "g": "girl", "name": "曉妮", "desc": "陝西腔", "edge": "zh-CN-shaanxi-XiaoniNeural", "pitch": "+25Hz", "rate": "+8%"},
+  {"id": "yunxia-plain", "g": "boy", "name": "雲夏", "desc": "小男孩", "edge": "zh-CN-YunxiaNeural"},
+  {"id": "yunxi", "g": "boy", "name": "雲希", "desc": "活潑大哥哥", "edge": "zh-CN-YunxiNeural"},
+  {"id": "yunjhe", "g": "boy", "name": "雲哲", "desc": "台灣口音", "edge": "zh-TW-YunJheNeural"},
+  {"id": "yunjian", "g": "boy", "name": "雲健", "desc": "很有精神", "edge": "zh-CN-YunjianNeural"},
+  {"id": "wanlung", "g": "boy", "name": "雲龍", "desc": "廣東話・可愛版", "edge": "zh-HK-WanLungNeural", "pitch": "+25Hz", "rate": "+8%"}
+ ]
+}
