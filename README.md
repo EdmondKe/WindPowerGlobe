@@ -16,11 +16,13 @@ data/farms.json          風場圖鑑（位置、容量、介紹文字）
 data/turbines.bin.gz     全球風機座標（壓縮二進位，格式見 tools/build_turbines.py）
 data/turbines-meta.json  風機筆數與下載時間
 data/tw-farm-turbines.json  台灣離岸風場與風機的對應
-data/typhoons.json       颱風路徑
+data/typhoons.json       全球颱風路徑（tools/build_typhoons.py 產生）
+data/typhoon-names.json  颱風英文名 → 中文名
 data/countries-50m.json  國界（找找看、3D 海岸線）
 data/taiwan-counties.json  台灣縣市界（3D 海岸線）
 tools/build_turbines.py  把 Overpass 下載的 GeoJSON 轉成 turbines.bin.gz
 tools/build_wind.py      下載 NOAA GFS 即時風場，轉成 data/wind.bin.gz（GitHub Actions 每 6 小時執行）
+tools/build_typhoons.py  從 GDACS 下載全球正在活動的颱風、颶風、氣旋（GitHub Actions 每 6 小時執行）
 .github/workflows/pages.yml  發布網站到 GitHub Pages，並先下載最新風場
 ```
 
@@ -79,6 +81,12 @@ python tools/build_wind.py
 
 讀不到風場檔時，網站會自動改用原本的程式模擬風場，HUD 會顯示「模擬風場」。
 
+## 颱風
+
+`tools/build_typhoons.py` 從 GDACS 下載全球正在活動的熱帶氣旋（實測路徑＋約 5 天預報），GitHub Actions 每 6 小時跟風場一起更新。
+風速換算成 10 分鐘平均風後，依中央氣象署標準分級，颱風寶寶跟著換顏色和表情：熱帶性低氣壓（淡藍、睡覺）、輕度（黃、開心）、中度（橘、用力吹）、強烈（紅、生氣）。
+西北太平洋颱風的中文名寫在 `data/typhoon-names.json`，有新颱風時可以自己加一行（例如 `"CHAMPI": "薔琵"`），沒有的就顯示英文名。
+
 ## 手機與平板
 
 iPhone、iPad（Safari 16.4 以上）與 Android 都能用。iPhone 的 Safari 不支援網頁全畫面，所以那裡會隱藏「⛶」鈕；
@@ -120,5 +128,5 @@ GitHub Pages 會自動重新發布。
 - 地形：© [Mapterhorn](https://mapterhorn.com/attribution)
 - 國界：[Natural Earth](https://www.naturalearthdata.com/)（公有領域）
 - 台灣縣市界：[內政部國土測繪中心](https://whgis-nlsc.moi.gov.tw/)，依[政府資料開放授權條款－第 1 版](https://data.gov.tw/license)
-- 颱風路徑：交通部中央氣象署、中國中央氣象台
+- 颱風路徑：[GDACS](https://www.gdacs.org/)（聯合國與歐盟全球災害警報系統，路徑資料來自美國 JTWC／NHC），GitHub Actions 每 6 小時更新；分級依交通部中央氣象署標準
 - 風場是程式模擬的，不是即時氣象觀測。

@@ -33,9 +33,9 @@ let styleReady=false, appReady=false;
 map.on('style.load',()=>{ styleReady=true; if(appReady) onStyle(); });
 
 /* ---------- 載入資料 ---------- */
-async function getJSON(u){ const r=await fetch(u); if(!r.ok) throw new Error(u+'（'+r.status+'）'); return r.json(); }
-async function getTurbines(u){
-  const r=await fetch(u); if(!r.ok) throw new Error(u+'（'+r.status+'）');
+async function getJSON(u,o){ const r=await fetch(u,o); if(!r.ok) throw new Error(u+'（'+r.status+'）'); return r.json(); }
+async function getTurbines(u,o){
+  const r=await fetch(u,o); if(!r.ok) throw new Error(u+'（'+r.status+'）');
   let ab=await r.arrayBuffer(); const h=new Uint8Array(ab,0,2);
   if(h[0]===0x1f&&h[1]===0x8b){ // 伺服器沒有自動解壓縮時，用瀏覽器內建的 gzip 解壓
     if(!('DecompressionStream' in window)) throw new Error('瀏覽器版本太舊，無法解開風機資料');
@@ -45,7 +45,7 @@ async function getTurbines(u){
 }
 const [FD, TWA, TOPO50, TWTOPO, TYD, WMETA, PLD, WBUF] = await Promise.all([
   getJSON('data/farms.json'), getJSON('data/tw-farm-turbines.json'), getJSON('data/countries-50m.json'),
-  getJSON('data/taiwan-counties.json'), getJSON('data/typhoons.json').catch(()=>({storms:[]})),
+  getJSON('data/taiwan-counties.json'), getJSON('data/typhoons.json',{cache:'no-cache'}).catch(()=>({storms:[]})),
   getJSON('data/turbines-meta.json').catch(()=>null), getJSON('data/music.json').catch(()=>null), getTurbines('data/turbines.bin.gz').catch(e=>{console.error(e);return e;})
 ]);
 
@@ -392,7 +392,7 @@ function baseWind(lon,lat,t){
 let WG=null;
 async function loadWind(){
   try{
-    const ab=await getTurbines('data/wind.bin.gz'), dv=new DataView(ab);
+    const ab=await getTurbines('data/wind.bin.gz',{cache:'no-cache'}), dv=new DataView(ab);
     if(dv.getUint32(0,true)!==0x31444e57||dv.getUint32(4,true)!==2) throw new Error('風場檔格式不符');
     const ni=dv.getUint16(8,true), nj=dv.getUint16(10,true), nt=dv.getUint16(12,true);
     const lat1=dv.getFloat32(16,true), lon1=dv.getFloat32(20,true), dlat=dv.getFloat32(24,true), dlon=dv.getFloat32(28,true), sc=dv.getFloat32(32,true);
@@ -400,7 +400,7 @@ async function loadWind(){
     const raw=new Int8Array(ab,36+4*nt,nt*2*ni*nj), d=new Float32Array(raw.length);
     for(let r=0;r<nt*2*nj;r++){ let x=0; for(let i=0;i<ni;i++){ const k=r*ni+i; x=((x+raw[k])<<24)>>24; d[k]=x*sc; } } // 還原經度方向的差分
     WG={ni,nj,nt,lat1,lon1,dlat,dlon,times,d};
-    const meta=await getJSON('data/wind-meta.json').catch(()=>null);
+    const meta=await getJSON('data/wind-meta.json',{cache:'no-cache'}).catch(()=>null);
     const run=meta&&new Date(meta.run), lbl=document.querySelector('.live');
     if(lbl){ lbl.innerHTML='<i></i>即時風場'; lbl.title=`NOAA GFS 全球預報${run?`（${run.getMonth()+1}/${run.getDate()} ${String(run.getHours()).padStart(2,'0')}:00 起報）`:''}，每 6 小時更新`; }
     clearTrails();
@@ -454,9 +454,19 @@ function stepVort(dt){
 }
 stepVort(0);
 
-/* ---------- 真實颱風（手動輸入路徑） ---------- */
-// 颱風路徑來自 data/typhoons.json（observed＝官方實測位置，其餘為依預報約略描繪）
-const TYPHOONS=(TYD.storms||[]).map(s=>({name:s.name,en:s.en,track:s.track.map(a=>({t:Date.parse(a.t),lat:a.lat,lon:a.lon,v:a.v}))})).filter(s=>s.track.length>=2);
+/* ---------- 真實颱風（全球，GitHub Actions 每 6 小時從 GDACS 更新） ---------- */
+// 颱風路徑來自 data/typhoons.json（obs＝實測位置，其餘為預報），由 tools/build_typhoons.py 產生
+// 中央氣象署颱風分級（近中心最大風速，10 分鐘平均）：熱帶性低氣壓 <17.2、輕度 17.2–32.6、中度 32.7–50.9、強烈 ≥51.0 m/s
+const TY_CLS=[17.2,32.7,51.0];
+const tyClass=v=>v<TY_CLS[0]?0:v<TY_CLS[1]?1:v<TY_CLS[2]?2:3;
+const tyClassName=(c,kind='颱風')=>c===0?'熱帶性低氣壓':['','輕度','中度','強烈'][c]+kind;
+// 每一級的顏色：雲帶、臉、標籤
+const TY_PAL=[
+  {band:'200,232,246', face:'#bfe8f5', pill:'rgba(110,160,190,.94)', dot:'#8fbcd4'},
+  {band:'255,238,150', face:'#ffe27a', pill:'rgba(222,170,20,.95)',  dot:'#e6b800'},
+  {band:'255,198,135', face:'#ffad55', pill:'rgba(250,120,30,.95)',  dot:'#ff8c2a'},
+  {band:'255,160,175', face:'#ff6f86', pill:'rgba(225,45,85,.95)',   dot:'#e8305a'}];
+const TYPHOONS=(TYD.storms||[]).map(s=>({name:s.name,en:s.en,kind:s.kind||'颱風',track:s.track.map(a=>({t:Date.parse(a.t),lat:a.lat,lon:a.lon,v:a.v,obs:!!(a.obs||a.observed)}))})).filter(s=>s.track.length>=2);
 function tyNow(ty,ms){
   const tr=ty.track, H6=6*3600e3, H12=12*3600e3;
   if(ms<tr[0].t-H6||ms>tr[tr.length-1].t+H12) return null;
@@ -488,34 +498,66 @@ function updTyphoons(){
   for(const ty of TYPHOONS){
     const s=tyNow(ty,S.simT); if(!s||s.v<=1) continue;
     s.ty=ty; s.cl=Math.cos(s.lat*D2R); s.R=1.2;
-    if(WG){ const e=gfsEye(s); if(e){ s.lon=e[0]; s.lat=e[1]; s.cl=Math.cos(s.lat*D2R); } }
+    s.c=tyClass(s.v);
+    if(WG&&s.v>=20){ const e=gfsEye(s); if(e){ s.lon=e[0]; s.lat=e[1]; s.cl=Math.cos(s.lat*D2R); } }
     TYS.push(s);
   }
 }
 let tyAng=0;
-// 可愛的颱風寶寶：旋轉的白色雲帶＋圓圓的雲朵臉（眼睛會眨、腮紅、嘟嘴吹風）
-function drawCuteTyphoon(g,x,y,r,ang,now){
+// 可愛的颱風寶寶：顏色和表情跟著中央氣象署的分級變
+//   熱帶性低氣壓＝淡藍色、睡覺（zZ）；輕度＝黃色、開心笑；中度＝橘色、鼓起臉頰用力吹；強烈＝紅色、生氣大叫（轉得最快）
+function drawCuteTyphoon(g,x,y,r,ang,now,c=1){
+  const P=TY_PAL[c], ink='#24324a';
   for(let arm=0;arm<3;arm++){
     for(let t=0;t<=1.0001;t+=0.055){
       const a=ang+arm*TAU/3-t*3.6, rr=r*(0.55+t*1.05), sz=r*(0.2-0.13*t);
-      g.fillStyle=t*18%2<1?`rgba(255,255,255,${0.9-0.65*t})`:`rgba(190,228,255,${0.9-0.65*t})`;
+      g.fillStyle=t*18%2<1?`rgba(255,255,255,${0.9-0.65*t})`:`rgba(${P.band},${0.95-0.65*t})`;
       g.beginPath(); g.arc(x+Math.cos(a)*rr,y+Math.sin(a)*rr,Math.max(1.5,sz),0,TAU); g.fill();
     }
   }
-  // 雲朵身體（幾顆圓疊起來）
+  // 雲朵身體（強颱會微微發抖）
+  const sh=c===3?Math.sin(now/45)*r*0.02:0; x+=sh;
   g.fillStyle='#ffffff';
   for(const [dx,dy,k] of [[0,0,0.62],[-0.42,0.1,0.42],[0.42,0.1,0.42],[-0.22,-0.35,0.4],[0.22,-0.35,0.4]]){ g.beginPath(); g.arc(x+dx*r,y+dy*r,k*r,0,TAU); g.fill(); }
-  g.fillStyle='#9fdcff'; g.beginPath(); g.arc(x,y+r*0.05,r*0.5,0,TAU); g.fill();
-  // 臉
-  const blink=(now%3600)<140, ey=y-r*0.05, ex=r*0.2;
-  g.fillStyle='#24324a';
-  for(const sx of [-1,1]){
-    if(blink){ g.fillRect(x+sx*ex-r*0.07,ey-r*0.015,r*0.14,r*0.03); }
-    else{ g.beginPath(); g.arc(x+sx*ex,ey,r*0.075,0,TAU); g.fill(); g.fillStyle='#ffffff'; g.beginPath(); g.arc(x+sx*ex+r*0.025,ey-r*0.03,r*0.028,0,TAU); g.fill(); g.fillStyle='#24324a'; }
+  g.fillStyle=P.face; g.beginPath(); g.arc(x,y+r*0.05,r*0.5,0,TAU); g.fill();
+  const ey=y-r*0.05, ex=r*0.2, lw=Math.max(1.2,r*0.045);
+  g.strokeStyle=ink; g.fillStyle=ink; g.lineWidth=lw; g.lineCap='round';
+  const dotEyes=()=>{ const blink=(now%3600)<140;
+    for(const sx of [-1,1]){
+      if(blink){ g.beginPath(); g.moveTo(x+sx*ex-r*0.07,ey); g.lineTo(x+sx*ex+r*0.07,ey); g.stroke(); }
+      else{ g.fillStyle=ink; g.beginPath(); g.arc(x+sx*ex,ey,r*0.075,0,TAU); g.fill(); g.fillStyle='#ffffff'; g.beginPath(); g.arc(x+sx*ex+r*0.025,ey-r*0.03,r*0.028,0,TAU); g.fill(); }
+    } g.fillStyle=ink; };
+  const cheeks=(a)=>{ g.fillStyle=`rgba(255,110,150,${a})`; for(const sx of [-1,1]){ g.beginPath(); g.ellipse(x+sx*r*0.34,ey+r*0.13,r*0.09,r*0.055,0,0,TAU); g.fill(); } g.fillStyle=ink; };
+  if(c===0){ // 睡覺：閉眼的弧線、小小的嘴、飄出 zZ
+    for(const sx of [-1,1]){ g.beginPath(); g.arc(x+sx*ex,ey-r*0.02,r*0.07,0.15*Math.PI,0.85*Math.PI); g.stroke(); }
+    cheeks(.45);
+    g.beginPath(); g.arc(x,ey+r*0.2,r*0.035,0,TAU); g.stroke();
+    const k=(now%2400)/2400; g.globalAlpha=1-k; g.font=`700 ${Math.round(r*0.26)}px sans-serif`; g.textAlign='center'; g.textBaseline='middle';
+    g.fillText('z',x+r*(0.45+0.15*k),y-r*(0.55+0.3*k)); g.font=`700 ${Math.round(r*0.18)}px sans-serif`; g.fillText('z',x+r*(0.32+0.1*k),y-r*(0.38+0.2*k));
+    g.globalAlpha=1; g.textAlign='start';
+  }else if(c===1){ // 開心：亮晶晶的眼睛＋大大的笑
+    dotEyes(); cheeks(.7);
+    g.beginPath(); g.arc(x,ey+r*0.1,r*0.13,0.15*Math.PI,0.85*Math.PI); g.stroke();
+  }else if(c===2){ // 用力吹：眉毛往上、鼓臉頰、嘟嘴，嘴邊吹出風
+    dotEyes(); cheeks(.9);
+    for(const sx of [-1,1]){ g.beginPath(); g.moveTo(x+sx*(ex-r*0.08),ey-r*0.15); g.lineTo(x+sx*(ex+r*0.07),ey-r*0.19); g.stroke(); }
+    g.beginPath(); g.ellipse(x,ey+r*0.21,r*0.055,r*0.07,0,0,TAU); g.stroke();
+    const k=(now%900)/900; g.globalAlpha=0.85*(1-k); g.strokeStyle='#ffffff'; g.lineWidth=lw*0.9;
+    for(const o of [-0.07,0.07]){ g.beginPath(); g.moveTo(x+r*(0.1+0.25*k),ey+r*(0.21+o)); g.lineTo(x+r*(0.3+0.3*k),ey+r*(0.21+o*1.6)); g.stroke(); }
+    g.globalAlpha=1; g.strokeStyle=ink; g.lineWidth=lw;
+  }else{ // 生氣：倒八字眉、張大嘴、頭上冒青筋
+    dotEyes(); cheeks(.6);
+    g.lineWidth=lw*1.3;
+    for(const sx of [-1,1]){ g.beginPath(); g.moveTo(x+sx*(ex+r*0.09),ey-r*0.2); g.lineTo(x+sx*(ex-r*0.07),ey-r*0.12); g.stroke(); }
+    g.lineWidth=lw;
+    g.beginPath(); g.moveTo(x-r*0.12,ey+r*0.15); g.quadraticCurveTo(x,ey+r*0.1,x+r*0.12,ey+r*0.15); g.quadraticCurveTo(x+r*0.1,ey+r*0.34,x,ey+r*0.34); g.quadraticCurveTo(x-r*0.1,ey+r*0.34,x-r*0.12,ey+r*0.15); g.fill();
+    g.fillStyle='#ff8fa3'; g.beginPath(); g.ellipse(x,ey+r*0.29,r*0.06,r*0.035,0,0,TAU); g.fill();
+    const pulse=1+0.12*Math.sin(now/120), mx=x+r*0.42, my=y-r*0.45, m=r*0.11*pulse;
+    g.strokeStyle='#e8203f'; g.lineWidth=lw*1.1;
+    for(const [sx,sy] of [[-1,-1],[1,-1],[-1,1],[1,1]]){ g.beginPath(); g.moveTo(mx+sx*m*0.35,my+sy*m); g.quadraticCurveTo(mx+sx*m*0.35,my+sy*m*0.35,mx+sx*m,my+sy*m*0.35); g.stroke(); }
+    g.strokeStyle=ink;
   }
-  g.fillStyle='rgba(255,130,160,.7)';
-  for(const sx of [-1,1]){ g.beginPath(); g.ellipse(x+sx*r*0.34,ey+r*0.13,r*0.09,r*0.055,0,0,TAU); g.fill(); }
-  g.strokeStyle='#24324a'; g.lineWidth=Math.max(1.2,r*0.04); g.beginPath(); g.arc(x,ey+r*0.2,r*0.06,0,TAU); g.stroke(); // 嘟嘴吹風
+  g.lineCap='butt';
 }
 function drawTyphoons(g,dtR){
   if(S.playing) tyAng-=dtR*0.004;
@@ -523,18 +565,20 @@ function drawTyphoons(g,dtR){
     g.setLineDash([5,5]); g.strokeStyle=C.warm; g.lineWidth=1.5; g.beginPath(); let on=false;
     for(const p of ty.track){const q=project(p.lon,p.lat); if(!q){on=false;continue;} if(!on){g.moveTo(q[0],q[1]);on=true;} else g.lineTo(q[0],q[1]);}
     g.stroke(); g.setLineDash([]);
-    for(const p of ty.track){const q=project(p.lon,p.lat); if(!q) continue; g.fillStyle=C.warm; g.beginPath(); g.arc(q[0],q[1],2.5,0,TAU); g.fill();}
+    // 路徑上的點依當時的分級上色：實心＝實測，空心＝預報
+    for(const p of ty.track){const q=project(p.lon,p.lat); if(!q) continue; const col=TY_PAL[tyClass(p.v)].dot; g.beginPath(); g.arc(q[0],q[1],p.obs?3:3.2,0,TAU);
+      if(p.obs){ g.fillStyle=col; g.fill(); } else { g.fillStyle='rgba(255,255,255,.85)'; g.fill(); g.strokeStyle=col; g.lineWidth=1.6; g.stroke(); } }
   }
   const now=performance.now();
   for(const s of TYS){
     const q=project(s.lon,s.lat); if(!q) continue;
     const q2=projRaw(s.lon+1,s.lat)||q;
     const r=Math.min(110,Math.max(22,Math.hypot(q2[0]-q[0],q2[1]-q[1])*1.4));
-    drawCuteTyphoon(g,q[0],q[1],r,tyAng,now);
-    const txt=`${s.ty.name} ${Math.round(s.v)} m/s`;
+    drawCuteTyphoon(g,q[0],q[1],r,tyAng*(0.6+0.35*s.c),now,s.c);
+    const txt=`${s.ty.name}・${tyClassName(s.c,s.ty.kind)} ${Math.round(s.v)} m/s`;
     g.font='700 13px "Noto Sans TC","Microsoft JhengHei",sans-serif'; g.textBaseline='middle'; g.textAlign='center'; g.lineJoin='round';
     const tw=g.measureText(txt).width, ly=q[1]+r*1.75+10;
-    g.fillStyle='rgba(255,110,70,.92)'; g.beginPath(); g.roundRect?g.roundRect(q[0]-tw/2-9,ly-11,tw+18,22,11):g.rect(q[0]-tw/2-9,ly-11,tw+18,22); g.fill();
+    g.fillStyle=TY_PAL[s.c].pill; g.beginPath(); g.roundRect?g.roundRect(q[0]-tw/2-9,ly-11,tw+18,22,11):g.rect(q[0]-tw/2-9,ly-11,tw+18,22); g.fill();
     g.fillStyle='#ffffff'; g.fillText(txt,q[0],ly); g.textAlign='start';
   }
 }
@@ -836,9 +880,16 @@ function showTurbinePopup(t){
   // api=1&map_action=pano 的網址有時打開是全黑、要拖一下才出現，改用 layer=c&cbll= 的街景網址
   aSv.href=`https://www.google.com/maps?layer=c&cbll=${ll}&cbp=12,0,0,0,0`;
   if(t.off) aSv.remove(); // 海上沒有街景
-  aMap.href=`https://www.google.com/maps/@?api=1&map_action=map&center=${ll}&zoom=17&basemap=satellite`;
+  aMap.href=`https://www.google.com/maps?q=${ll}&t=k&z=17`; // q＝在風機位置插紅色大頭針，t=k＝衛星圖
   el.querySelector('small').textContent=t.off?'在海上沒有街景，可以看空照':'街景會找最近的拍攝點，轉一轉就能找到風車';
-  tPopup=new maplibregl.Popup({closeButton:true,maxWidth:'260px',offset:12}).setLngLat([t.lon,t.lat]).setDOMContent(el).addTo(map);
+  // 此刻的狀態：風場圖鑑裡的用風場的風速，其他的跟畫面上一樣用所在 1° 格子中心的風（同一格的風機一起轉、一起停）
+  let ws; if(t.farm) ws=t.farm.ws; else { const w=windAt(Math.floor(t.lon)+0.5,Math.floor(t.lat)+0.5,simSec); ws=hubWs(Math.hypot(w[0],w[1]),false); }
+  const st=document.createElement('p'); st.className='tpop-st';
+  st.textContent=t.kind===3?'傳統風車：以前用來磨麵粉、抽水，現在大多當作古蹟展示':
+    `此刻風速約 ${ws.toFixed(1)} m/s・`+(t.farm&&t.farm.st==='ret'?'已退役，不再轉動':ws>=VCO?'風太強，葉片轉成順風方向「保護停機」，等風變小再轉':ws<VCI?'風太小，慢慢空轉':'正在發電');
+  el.querySelector('p').after(st);
+  // 視窗放在風機下方，才不會蓋住轉動的葉片
+  tPopup=new maplibregl.Popup({closeButton:true,maxWidth:'260px',offset:12,anchor:'top'}).setLngLat([t.lon,t.lat]).setDOMContent(el).addTo(map);
 }
 map.on('click',e=>{
   const x=e.point.x, y=e.point.y;
@@ -1197,7 +1248,9 @@ function updHud(now){
   $('#outBar').style.width=(out/capTotal*100).toFixed(1)+'%';
   $('#hudCount').textContent=`${run} 座風場發電中`;
   const tr=$('#tyRow');
-  if(TYS.length){const s=TYS[0], dTW=d3.geoDistance([s.lon,s.lat],[121,23.7])*6371; tr.hidden=false; tr.textContent=`🌀 ${s.ty.name}（${s.ty.en}）近中心約 ${Math.round(s.v)} m/s・距台灣約 ${Math.round(dTW/10)*10} 公里`;}
+  // 顯示離台灣最近的一個；全球還有其他的就加註「全球共 N 個」
+  if(TYS.length){const dist=s=>d3.geoDistance([s.lon,s.lat],[121,23.7])*6371, s=TYS.reduce((a,b)=>dist(b)<dist(a)?b:a), dTW=dist(s); tr.hidden=false;
+    tr.textContent=`🌀 ${s.ty.name}（${tyClassName(s.c,s.ty.kind)}）近中心約 ${Math.round(s.v)} m/s・距台灣約 ${Math.round(dTW/10)*10} 公里`+(TYS.length>1?`・全球共 ${TYS.length} 個`:'');}
   else tr.hidden=true;
   updPanel();
   if(now-lastCards>1000){lastCards=now;updCards();}
@@ -1248,23 +1301,26 @@ for(const f of C50){const m=mainPart(f);f.anchor=d3.geoCentroid(m);f.area=d3.geo
 const toastEl=$('#toast'); let toastT=0;
 function toast(msg,ms=2800){ toastEl.textContent=msg; toastEl.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>toastEl.classList.remove('on'),ms); }
 S.voice=true;
-// 語音：優先挑自然一點的台灣女生聲音（Edge 的 HsiaoYu／HsiaoChen 自然語音、Chrome 的 Google 國語⋯），音調調高一點聽起來比較年輕
-let VOICE=null, voiceName=''; try{ voiceName=localStorage.getItem('windglobe-voice')||''; }catch(e){}
-const VOICE_PREF=[/HsiaoYu/i,/HsiaoChen/i,/zh-TW.*Natural|Natural.*Taiwan/i,/Yating/i,/Hanhan/i,/Mei-?Jia/i,/Google 國語|Google.*Taiwan/i,/Tingting|Ting-Ting/i,/Xiaoxiao/i];
-function zhVoices(){ return ('speechSynthesis' in window)?speechSynthesis.getVoices().filter(v=>/^(zh|cmn|yue)/i.test(v.lang)):[]; }
+// 語音：瀏覽器內建語音（不含 Google 的線上語音和男生聲音）× 4 種音調，組成選單讓人試聽挑一個
+//   瀏覽器沒有真正的兒童聲音，靠把音調拉高、語速調快變得像卡通小女孩
+const VOICE_PRESETS=[['q','Q版',2,1.08],['elf','小精靈',2,1.3],['sweet','甜甜',1.6,0.95],['plain','自然',1.15,1.0]];
+const VOICE_MALE=/Zhiwei|Kangkang|Yunxi|Yunjian|Yunyang|YunJhe|Yunxia|Danny|WanLung|Sinji|Li-mu/i;
+const VOICE_PREF=[/HsiaoYu/i,/HsiaoChen/i,/Yating/i,/Hanhan/i,/Mei-?Jia/i,/Tingting|Ting-Ting/i,/Xiaoxiao/i];
+let VOICE=null, VPRE=VOICE_PRESETS[0], voiceKey=''; try{ voiceKey=localStorage.getItem('windglobe-voice2')||''; }catch(e){}
+function zhVoices(){ return ('speechSynthesis' in window)?speechSynthesis.getVoices().filter(v=>/^(zh|cmn|yue)/i.test(v.lang)&&!/^Google/i.test(v.name)&&!VOICE_MALE.test(v.name)):[]; }
+const voiceLabel=v=>v.name.replace(/^Microsoft /,'').replace(/ Online \(Natural\)/,'（自然）').replace(/ - .*$/,'')+(/HK|yue/i.test(v.lang)?'・粵語':/TW|Hant/i.test(v.lang)?'・台灣':/CN|Hans/i.test(v.lang)?'・大陸':'');
 function pickVoice(){
-  const vs=zhVoices(); VOICE=vs.find(v=>v.name===voiceName)||null;
-  if(!VOICE) for(const re of VOICE_PREF){ VOICE=vs.find(v=>re.test(v.name)&&/TW|Hant/i.test(v.lang))||vs.find(v=>re.test(v.name)); if(VOICE) break; }
-  if(!VOICE) VOICE=vs.find(v=>/TW/i.test(v.lang))||vs[0]||null;
-  const sel=$('#gmVoiceSel'); if(sel){ sel.innerHTML=''; for(const v of vs){ const o=document.createElement('option'); o.value=v.name; o.textContent=v.name.replace(/^Microsoft /,'').replace(/ - .*$/,''); if(VOICE&&v.name===VOICE.name) o.selected=true; sel.append(o); } sel.hidden=!vs.length; }
+  const vs=zhVoices(); vs.sort((a,b)=>{ const r=v=>{ const i=VOICE_PREF.findIndex(re=>re.test(v.name)); return (i<0?99:i)+(/TW|Hant/i.test(v.lang)?0:50); }; return r(a)-r(b); });
+  const [vn,pk]=voiceKey.split('|');
+  VOICE=vs.find(v=>v.name===vn)||vs[0]||null; VPRE=VOICE_PRESETS.find(p=>p[0]===pk)||VOICE_PRESETS[0];
+  const sel=$('#gmVoiceSel'); if(!sel) return; sel.innerHTML=''; let n=0;
+  for(const v of vs) for(const p of VOICE_PRESETS){ const o=document.createElement('option'); o.value=v.name+'|'+p[0]; o.textContent=`${++n}. ${voiceLabel(v)}・${p[1]}`; if(v===VOICE&&p===VPRE) o.selected=true; sel.append(o); }
+  sel.hidden=!vs.length;
 }
 if('speechSynthesis' in window){ pickVoice(); speechSynthesis.addEventListener('voiceschanged',pickVoice); }
 function say(text){ if(!S.voice||!('speechSynthesis' in window)) return; try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text); u.lang=VOICE?VOICE.lang:'zh-TW'; if(VOICE) u.voice=VOICE;
-  const natural=VOICE&&/Natural|Online|Google/i.test(VOICE.name);
-  // Q 版：音調拉到很高、稍微快一點，聽起來像卡通小女孩（瀏覽器內建語音沒有真正的兒童聲音）
-  if(S.qvoice){ u.pitch=2; u.rate=1.08; } else { u.rate=natural?1.02:1.0; u.pitch=natural?1.2:1.45; }
+  u.pitch=VPRE[2]; u.rate=VPRE[3];
   speechSynthesis.speak(u);}catch(e){} }
-S.qvoice=true; try{ if(localStorage.getItem('windglobe-qvoice')==='0') S.qvoice=false; }catch(e){}
 let STARS=0; try{STARS=+localStorage.getItem('windglobe-stars')||0;}catch(e){}
 function addStar(n=1){ STARS+=n; try{localStorage.setItem('windglobe-stars',STARS);}catch(e){} updStars(); }
 function updStars(){ $('#starN').textContent='⭐ '+STARS; $('#gmStars').textContent=STARS; }
@@ -1305,10 +1361,7 @@ $('#gmFind').onclick=()=>{ gmenu.hidden=true; startFind(); };
 $('#gmBlow').onclick=()=>{ gmenu.hidden=true; const f=S.sel&&S.sel.tur?S.sel:byId.gch; userTook(); select(f,true); setTimeout(()=>open3D(specForFarm(f)),600); };
 $('#gmBook').onclick=()=>{ gmenu.hidden=true; updBook(); $('#book').hidden=false; };
 $('#gmVoice').onclick=()=>{ S.voice=!S.voice; $('#gmVoice').setAttribute('aria-pressed',S.voice); $('#gmVoice').textContent=S.voice?'語音朗讀：開':'語音朗讀：關'; };
-$('#gmVoiceSel').onchange=e=>{ voiceName=e.target.value; try{localStorage.setItem('windglobe-voice',voiceName);}catch(err){} pickVoice(); say('你好，我是風車地球的小幫手！'); };
-$('#gmQ').textContent=S.qvoice?'Q版聲音：開':'Q版聲音：關'; $('#gmQ').setAttribute('aria-pressed',S.qvoice);
-$('#gmQ').onclick=()=>{ S.qvoice=!S.qvoice; try{localStorage.setItem('windglobe-qvoice',S.qvoice?'1':'0');}catch(e){}
-  $('#gmQ').textContent=S.qvoice?'Q版聲音：開':'Q版聲音：關'; $('#gmQ').setAttribute('aria-pressed',S.qvoice); $('#gmVoiceTry').click(); };
+$('#gmVoiceSel').onchange=e=>{ voiceKey=e.target.value; try{localStorage.setItem('windglobe-voice2',voiceKey);}catch(err){} pickVoice(); $('#gmVoiceTry').click(); };
 $('#gmVoiceTry').onclick=()=>{ const v=S.voice; S.voice=true; say('你好，我是風車地球的小幫手！一起來看風車吧！'); S.voice=v; };
 
 /* ================= 遊戲一：找找看 ================= */

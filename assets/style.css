@@ -244,6 +244,7 @@ body.v3on{overflow:hidden}
 .maplibregl-popup-anchor-right .maplibregl-popup-tip{border-left-color:var(--surface2)}
 .tpop b{display:block;font-size:15px;margin-right:18px}
 .tpop p{margin:2px 0 8px;font-size:12px;color:var(--muted)}
+.tpop p.tpop-st{margin:-4px 0 8px;color:var(--text);font-weight:600}
 .tpop-b{display:flex;gap:6px}
 .tpop-b a{flex:1;text-align:center;text-decoration:none;font-weight:700;font-size:13px;padding:6px 8px;border-radius:8px;background:var(--accent);color:var(--accent-ink)}
 .tpop-b a+a{background:var(--line);color:var(--text)}

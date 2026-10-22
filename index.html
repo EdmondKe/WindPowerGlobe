@@ -18,7 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Sora:wght@500;700;800&display=swap" rel="stylesheet">
 <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
 <link href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" rel="stylesheet">
-<link href="assets/style.css?v=20261023b" rel="stylesheet">
+<link href="assets/style.css?v=20261024a" rel="stylesheet">
 </head>
 <body>
 <div class="wrap">
@@ -107,7 +107,7 @@
     <button class="big" id="gmBlow"><b>3D 風場任務</b><small>點亮村莊、對準風向、撐過暴風，三關拿星星</small></button>
     <button class="big" id="gmDots"><b>風車點點樂</b><small>照順序點風車連線，練習數字和 ABC（平常點風車也會有 Do Re Mi）</small></button>
     <button class="big" id="gmBook"><b>風場貼紙簿</b><small>點開風場就能收集貼紙</small></button>
-    <div class="gm-voice"><button class="pill" id="gmVoice" aria-pressed="true">語音朗讀：開</button><select id="gmVoiceSel" aria-label="朗讀的聲音" hidden></select><button class="pill" id="gmQ" aria-pressed="true">Q版聲音：開</button><button class="pill" id="gmVoiceTry">試聽</button></div>
+    <div class="gm-voice"><button class="pill" id="gmVoice" aria-pressed="true">語音朗讀：開</button><select id="gmVoiceSel" aria-label="朗讀的聲音和音調" hidden></select><button class="pill" id="gmVoiceTry">試聽</button></div>
   </div>
   <div class="gmenu" id="smenu" hidden>
     <div class="gm-h">風聲・白噪音<span>開著時音樂會變小聲</span></div>
@@ -160,7 +160,7 @@
     <li>風場位置、裝置容量、機組數、啟用年份：整理自各開發商公開資料、GWEC《Global Wind Report》、經濟部能源署公開資訊及維基百科等，為約略值，部分風場仍在建置或分期運轉中。</li>
     <li>即時風場：<a href="https://www.nco.ncep.noaa.gov/pmb/products/gfs/">NOAA NCEP GFS</a> 全球數值預報（1° 網格、地面 10 公尺高的風，美國政府公有領域），由 GitHub Actions 每 6 小時下載更新；風機的風速依高度換算（陸上 ×1.3、離岸 ×1.15）。這是預報，不是儀器實測。讀不到預報時改用下面的程式模擬。</li>
     <li>全球風場與氣旋：程式化模擬（依緯度的信風帶／西風帶／極地東風帶配置，加上隨時間移動的氣旋與反氣旋），用來呈現「風怎麼流動」，不是即時氣象觀測。</li>
-    <li id="srcTy">真實颱風：路徑取自交通部中央氣象署及中國中央氣象台發布；預報段為約略描繪，非官方路徑，實際請以<a href="https://www.cwa.gov.tw/">中央氣象署</a>最新颱風警報為準。颱風風場採 Rankine 型渦旋簡化（最大風速半徑內風速隨距離線性增加、外側隨距離遞減），並加入向內吹的分量。</li>
+    <li id="srcTy">真實颱風：全球正在活動的颱風、颶風、熱帶氣旋，路徑取自 <a href="https://www.gdacs.org/">GDACS</a>（聯合國與歐盟全球災害警報系統，資料來自美國聯合颱風警報中心 JTWC／國家颶風中心 NHC），每 6 小時自動更新；風速換算成 10 分鐘平均風後，依交通部中央氣象署標準分為熱帶性低氣壓、輕度、中度、強烈颱風。實際請以<a href="https://www.cwa.gov.tw/">中央氣象署</a>最新颱風警報為準。有即時風場時，颱風圖示會對到風場裡的颱風眼；沒有時颱風風場採 Rankine 型渦旋簡化。</li>
     <li>發電功率：風功率 P = ½ρAC<sub>p</sub>v³；C<sub>p</sub> 理論上限 16/27（Betz, 1919）。採簡化功率曲線，切入／額定／切出風速取大型機組常見值 3／12／25 m/s，曲線量測方法參考 IEC 61400-12-1。</li>
     <li>蒲福風級：依 WMO 與交通部中央氣象署之蒲福風級表（10 公尺高度風速）。</li>
     <li>家庭用電戶數：以一般住宅每月約 300 度電（平均約 0.42 kW）估算，僅供感受規模。</li>
@@ -202,6 +202,6 @@
 <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
-<script src="assets/app.js?v=20261023b"></script>
+<script src="assets/app.js?v=20261024a"></script>
 </body>
 </html>
