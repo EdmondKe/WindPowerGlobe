@@ -43,7 +43,9 @@ def load_turbines():
             if v >= 1 << 31: v -= 1 << 32
             acc += v; out.append(acc / 1e5)
         return out
-    return plane(o), plane(o + 4 * n)
+    lon, lat = plane(o), plane(o + 4 * n); cl = b[o + 8 * n:o + 9 * n]
+    keep = [i for i in range(n) if cl[i] >> 5 != 3]  # 傳統風車不算音樂區
+    return [lon[i] for i in keep], [lat[i] for i in keep]
 
 def topo_features(path, obj):
     t = json.loads(Path(path).read_text(encoding='utf-8'))

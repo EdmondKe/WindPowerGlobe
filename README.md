@@ -3,7 +3,7 @@
 給小朋友看的全球風力發電療癒網站：風在地球上流動，世界各地四十多萬支真實位置的風車跟著轉。
 
 - 底圖：MapLibre GL JS 5.24 ＋ OpenFreeMap 向量圖磚（道路、建築、地名）＋ Mapterhorn 地形（陰影、立體地形）
-- 功能：模擬風場流線、颱風、風場面板與圖鑑、3D 風場任務（three.js，依地點換成台灣海峽／海上／北海／沙漠／草原／山區／雪地場景，三關：點亮村莊、對準風向、暴風來襲；地面用跟平面地圖一樣的底圖，附近有建築就蓋成立體房子）、風車點點樂（點風車彈 Do Re Mi、照順序連線練習數字和 ABC）、📍 GPS 打卡（手機走到風車 2 公里內打卡，那一區的風車換成兩葉片、垂直軸、格子鐵塔、荷蘭風車、紅白葉尖或七彩等造型，紀錄在貼紙簿；打卡紀錄只存在這台裝置的瀏覽器裡）、找找看、貼紙簿、背景音樂、風聲、環遊世界導覽、放空模式
+- 功能：模擬風場流線、颱風、風場面板與圖鑑、3D 風場任務（three.js，依地點換成台灣海峽／海上／北海／沙漠／草原／山區／雪地場景，三關：點亮村莊、對準風向、暴風來襲；地面用跟平面地圖一樣的底圖，附近有建築就蓋成立體房子）、風車點點樂（點風車彈 Do Re Mi、照順序連線練習數字和 ABC）、📍 GPS 打卡（手機走到風車 2 公里內打卡，那一區的風車變成七彩版，紀錄在貼紙簿；打卡紀錄只存在這台裝置的瀏覽器裡）、找找看、貼紙簿、背景音樂、風聲、環遊世界導覽、放空模式
 
 ## 檔案
 
@@ -39,8 +39,11 @@ python -m http.server 8000
 把 Overpass 匯出的 GeoJSON 放進 `WindGlobe_data/raw/`，再執行：
 
 ```bash
-python tools/build_turbines.py "WindGlobe_data/raw/*.geojson"
+python tools/build_turbines.py "WindGlobe_data/raw/*.geojson" --mills WindGlobe_data/raw_windmills/windmills.json
 ```
+
+`--mills` 是 Overpass 匯出的傳統風車（查詢 `nwr["man_made"="windmill"]; out center tags;`），地圖上用荷蘭風車造型顯示。
+風機造型依資料決定：額定容量推估年代（越大越新）、OSM 標了兩葉片或垂直軸的照樣畫，台灣陸上塔底綠色漸層、德國與日本大型風機葉尖紅白；打卡後整區變成七彩版。
 
 會重新產生 `data/turbines.bin.gz` 和 `data/turbines-meta.json`。原始檔很大，已在 `.gitignore` 排除，不會推上 GitHub。
 
@@ -75,6 +78,12 @@ python tools/build_wind.py
 ```
 
 讀不到風場檔時，網站會自動改用原本的程式模擬風場，HUD 會顯示「模擬風場」。
+
+## 手機與平板
+
+iPhone、iPad（Safari 16.4 以上）與 Android 都能用。iPhone 的 Safari 不支援網頁全畫面，所以那裡會隱藏「⛶」鈕；
+可以從 Safari 的分享選單選「加入主畫面」，之後從主畫面打開就像 App 一樣全螢幕（圖示在 `assets/icon-*.png`，設定在 `manifest.webmanifest`）。
+打卡需要允許網頁使用位置；背景音樂要先點一下畫面才能播放，螢幕鎖定時會停止。
 
 ## 發布到 GitHub Pages
 

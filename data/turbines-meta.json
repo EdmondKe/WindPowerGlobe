@@ -1,7 +1,10 @@
 {
- "count": 454436,
+ "count": 454431,
+ "windmills": 12620,
+ "vertical_axis": 409,
+ "two_blade": 32,
  "osm_timestamp": "2026-10-21T10:30:16Z",
- "built": "2026-10-21T15:32:26+00:00",
- "offshore": 15734,
+ "built": "2026-10-22T03:09:05+00:00",
+ "offshore": 15810,
  "source": "© OpenStreetMap contributors, ODbL 1.0 (Overpass API: generator:source=wind)"
 }

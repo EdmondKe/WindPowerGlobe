@@ -1,7 +1,8 @@
 """把 OpenStreetMap 風機點位（Overpass 匯出的 GeoJSON 或 Overpass JSON）轉成網站用的壓縮資料檔。
 
 用法：
-    python tools/build_turbines.py WindGlobe_data/raw/*.geojson
+    python tools/build_turbines.py "WindGlobe_data/raw/*.geojson" --mills WindGlobe_data/raw_windmills/windmills.json
+（--mills 是 Overpass 匯出的傳統風車 man_made=windmill，可省略）
 
 輸出：
     data/turbines.bin.gz    全部風機（依 1° 格子排序、座標差分編碼後 gzip）
@@ -14,7 +15,8 @@
     dlon    n 個 i32：經度×1e5 與前一支的差（第一支為絕對值），位元組分層存放
             （先放 n 個最低位元組，再放 n 個次低位元組⋯），gzip 壓得比較小
     dlat    n 個 i32：緯度×1e5 與前一支的差，同樣分層存放
-    cl      n 個 u8：低 4 位元＝葉輪直徑等級（見 DCL），第 4 位元＝離岸
+    cl      n 個 u8：低 4 位元＝葉輪直徑等級（見 DCL），第 4 位元＝離岸，
+            第 5–6 位元＝類型（0 一般三葉片、1 兩葉片、2 垂直軸、3 傳統風車〔不發電，不算進風機數量〕）
 """
 import argparse, glob, gzip, json, math, re, struct, sys
 from datetime import datetime, timezone
@@ -45,6 +47,12 @@ def parse_mw(v):
 def is_offshore(t):
     return t.get('offshore') == 'yes' or 'seamark:type' in t or t.get('location') in ('offshore', 'sea')
 
+def kind_of(t):
+    if t.get('man_made') == 'windmill': return 3
+    if 'vertical' in str(t.get('generator:type', '')).lower(): return 2
+    if str(t.get('rotor:blades', '')).strip() == '2': return 1
+    return 0
+
 def first_point(g):
     """非點的幾何（少數風機被畫成面）取第一個座標。"""
     c = g.get('coordinates')
@@ -73,8 +81,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('inputs', nargs='+')
     ap.add_argument('--out', default='data')
+    ap.add_argument('--mills', help='傳統風車（Overpass JSON）')
     a = ap.parse_args()
-    files = sorted({f for pat in a.inputs for f in glob.glob(pat)})
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    files = sorted({f for pat in a.inputs for f in glob.glob(pat)}) + ([a.mills] if a.mills else [])
     if not files: sys.exit('找不到輸入檔')
 
     seen, pts, stamps = set(), [], []
@@ -86,7 +96,8 @@ def main():
             seen.add(oid)
             mw = parse_mw(tags.get('generator:output:electricity'))
             qx, qy = round(lon * 1e5), round(lat * 1e5)
-            pts.append((math.floor(lat), math.floor(lon), qx, qy, d_class(mw) | (16 if is_offshore(tags) else 0)))
+            k = 3 if fn == a.mills else kind_of(tags)
+            pts.append((math.floor(lat), math.floor(lon), qx, qy, (0 if k == 3 else d_class(mw)) | (16 if is_offshore(tags) else 0) | (k << 5)))
         print(f'{Path(fn).name}: {len(rows)} 筆，累計不重複 {len(pts)}')
 
     pts.sort()
@@ -112,7 +123,9 @@ def main():
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
     (out / 'turbines.bin.gz').write_bytes(gzip.compress(bytes(buf), 9, mtime=0))
     stamp = min(stamps) if stamps else datetime.now(timezone.utc).isoformat(timespec='seconds')
-    meta = {'count': n, 'osm_timestamp': stamp,
+    mills = sum(1 for p in pts if p[4] >> 5 == 3)
+    meta = {'count': n - mills, 'windmills': mills, 'vertical_axis': sum(1 for p in pts if (p[4] >> 5) == 2),
+            'two_blade': sum(1 for p in pts if (p[4] >> 5) == 1), 'osm_timestamp': stamp,
             'built': datetime.now(timezone.utc).isoformat(timespec='seconds'),
             'offshore': sum(1 for p in pts if p[4] & 16),
             'source': '© OpenStreetMap contributors, ODbL 1.0 (Overpass API: generator:source=wind)'}
