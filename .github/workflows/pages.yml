@@ -1,0 +1,50 @@
+# 發布風車地球到 GitHub Pages，並在發布前下載最新的 NOAA GFS 即時風場。
+# 觸發時機：推送到 main、每 6 小時（GFS 00/06/12/18Z 起報後約 4.5 小時，資料才會出齊）、或在 Actions 頁面手動執行。
+# 風場檔（data/wind.bin.gz）只放進發布的網站，不 commit 進 repo，歷史紀錄才不會越來越大。
+name: 發布網站（含即時風場）
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '30 4,10,16,22 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: 下載最新風場（失敗時網站自動改用模擬風場）
+        run: python tools/build_wind.py
+        continue-on-error: true
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: .
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

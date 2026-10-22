@@ -7,3 +7,7 @@ wind-globe.html
 __pycache__/
 .DS_Store
 Thumbs.db
+
+# 由 GitHub Actions 每 6 小時產生（tools/build_wind.py），不放進 git
+data/wind.bin.gz
+data/wind-meta.json

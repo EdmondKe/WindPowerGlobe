@@ -145,9 +145,9 @@ function drawWorld(g,dtR,occ){
   const now=performance.now(), lvl=kmPx<0.25?0:kmPx<2?1:2;
   if(now-wtLast>300){
     wtLast=now;
-    for(const c of WCELLS){const w=windAt(c.cx,c.cy,simSec);c.ws=Math.hypot(w[0],w[1])*1.05+2.2;c.frac=powerFrac(c.ws);c.rpm=c.ws>=VCO?0:c.ws<VCI?0.6:Math.min(14,3+c.ws*0.95);c.fill=wHue(c.frac,0.95);}
+    for(const c of WCELLS){const w=windAt(c.cx,c.cy,simSec);c.ws=hubWs(Math.hypot(w[0],w[1]),false);c.frac=powerFrac(c.ws);c.rpm=c.ws>=VCO?0:c.ws<VCI?0.6:Math.min(14,3+c.ws*0.95);c.fill=wHue(c.frac,0.95);}
     // 只更新目前快取裡的亮點；剛換縮放層級時快取還是上一層的格式，要等重建後再更新
-    if(WC.mode===1&&lvl===1) for(let k=2;k<WC.list.length;k+=3){const a=WC.list[k],w=windAt(a.cx,a.cy,simSec);a.frac=powerFrac(Math.hypot(w[0],w[1])*1.05+2.2);}
+    if(WC.mode===1&&lvl===1) for(let k=2;k<WC.list.length;k+=3){const a=WC.list[k],w=windAt(a.cx,a.cy,simSec);a.frac=powerFrac(hubWs(Math.hypot(w[0],w[1]),false));}
   }
   if(S.playing) for(const c of WCELLS) c.ang+=c.rpm/60*TAU*dtR/1000*1.6;
   if(WC.vv!==vv||WC.mode!==lvl){
@@ -155,7 +155,7 @@ function drawWorld(g,dtR,occ){
     if(lvl<2){
       // 拉遠時的亮點不需要地形高度，用比較快的平面換算
       for(const c of lvl?WAGG:WCELLS){ if(!inBox(c.cx,c.cy,0.6)) continue; const p=projectFlat(c.cx,c.cy); if(p) L.push(p[0],p[1],c); }
-      if(fresh&&lvl===1) for(let k=2;k<L.length;k+=3){const a=L[k],w=windAt(a.cx,a.cy,simSec);a.frac=powerFrac(Math.hypot(w[0],w[1])*1.05+2.2);}
+      if(fresh&&lvl===1) for(let k=2;k<L.length;k+=3){const a=L[k],w=windAt(a.cx,a.cy,simSec);a.frac=powerFrac(hubWs(Math.hypot(w[0],w[1]),false));}
     }else{
       // 先用經緯度挑出畫面裡的風機；太多時（例如德國北部）固定取其中一部分，不然拖曳會卡
       // 傾斜時畫面上半部是很遠的地方，那裡的風機只是小點：離中心越遠抽樣越稀（1、1/2、1/4、1/8）
@@ -387,7 +387,39 @@ function baseWind(lon,lat,t){
   const v=2.0*Math.sin(lon*D2R*3+td*0.6)*Math.cos(lat*D2R)+1.2*Math.cos(lon*D2R*5-lat*D2R*4+td*1.3);
   return [u,v];
 }
+/* ---------- 即時風場（NOAA GFS 預報，data/wind.bin.gz，GitHub Actions 每 6 小時更新） ---------- */
+// 讀得到就用真實的 10 公尺高風場（空間雙線性、時間線性內插）；讀不到就用下面的程式模擬
+let WG=null;
+async function loadWind(){
+  try{
+    const ab=await getTurbines('data/wind.bin.gz'), dv=new DataView(ab);
+    if(dv.getUint32(0,true)!==0x31444e57||dv.getUint32(4,true)!==2) throw new Error('風場檔格式不符');
+    const ni=dv.getUint16(8,true), nj=dv.getUint16(10,true), nt=dv.getUint16(12,true);
+    const lat1=dv.getFloat32(16,true), lon1=dv.getFloat32(20,true), dlat=dv.getFloat32(24,true), dlon=dv.getFloat32(28,true), sc=dv.getFloat32(32,true);
+    const times=[]; for(let k=0;k<nt;k++) times.push(dv.getUint32(36+4*k,true));
+    const raw=new Int8Array(ab,36+4*nt,nt*2*ni*nj), d=new Float32Array(raw.length);
+    for(let r=0;r<nt*2*nj;r++){ let x=0; for(let i=0;i<ni;i++){ const k=r*ni+i; x=((x+raw[k])<<24)>>24; d[k]=x*sc; } } // 還原經度方向的差分
+    WG={ni,nj,nt,lat1,lon1,dlat,dlon,times,d};
+    const meta=await getJSON('data/wind-meta.json').catch(()=>null);
+    const run=meta&&new Date(meta.run), lbl=document.querySelector('.live');
+    if(lbl){ lbl.innerHTML='<i></i>即時風場'; lbl.title=`NOAA GFS 全球預報${run?`（${run.getMonth()+1}/${run.getDate()} ${String(run.getHours()).padStart(2,'0')}:00 起報）`:''}，每 6 小時更新`; }
+    clearTrails();
+  }catch(e){ console.warn('即時風場讀取失敗，改用模擬風場',e); }
+}
+function windGrid(lon,lat,t){
+  const G=WG, T=G.times, n=G.ni*G.nj; let k=0, f=0;
+  if(t>=T[G.nt-1]){ k=G.nt-2; f=1; } else if(t>T[0]){ while(k<G.nt-2&&T[k+1]<t) k++; f=(t-T[k])/(T[k+1]-T[k]); }
+  const x=((((lon-G.lon1)/G.dlon)%G.ni)+G.ni)%G.ni, y=Math.max(0,Math.min(G.nj-1.001,(lat-G.lat1)/G.dlat));
+  const i0=Math.floor(x), i1=(i0+1)%G.ni, fx=x-i0, j0=Math.floor(y), j1=j0+1, fy=y-j0;
+  const s=(base)=>{ const d=G.d, a=d[base+j0*G.ni+i0], b=d[base+j0*G.ni+i1], c=d[base+j1*G.ni+i0], e=d[base+j1*G.ni+i1];
+    return (a*(1-fx)+b*fx)*(1-fy)+(c*(1-fx)+e*fx)*fy; };
+  const b0=k*2*n, b1=(k+1)*2*n;
+  return [s(b0)*(1-f)+s(b1)*f, s(b0+n)*(1-f)+s(b1+n)*f];
+}
+// 10 公尺高的風換算成輪轂高度的風（真實風場：陸上約 ×1.3、離岸約 ×1.15；模擬風場沿用原本的經驗式）
+function hubWs(s,off){ return WG?s*(off?1.15:1.3):s*(off?1.2:1.05)+(off?3.2:2.2); }
 function windAt(lon,lat,t){
+  if(WG) return windGrid(lon,lat,t);
   const b=baseWind(lon,lat,t); let u=b[0], v=b[1];
   for(let i=0;i<VORT.length;i++){
     const o=VORT[i]; if(o.amp<0.05) continue;
@@ -472,7 +504,7 @@ const VCI=3, VR=12, VCO=25;
 function powerFrac(v){ if(v<VCI||v>=VCO) return 0; if(v>=VR) return 1; return (v**3-VCI**3)/(VR**3-VCI**3); }
 function farmWind(f){
   const w=windAt(f.lon,f.lat,simSec); let s=Math.hypot(w[0],w[1]);
-  s = s*(f.k==='on'?1.05:1.2)+(f.k==='on'?2.2:3.2)+1.3*Math.sin(simSec/1800+f.ph);
+  s = hubWs(s,f.k!=='on')+(WG?0.6:1.3)*Math.sin(simSec/1800+f.ph);
   return Math.max(0,s);
 }
 function updateFarms(dtR){
@@ -701,7 +733,7 @@ function drawFarms(dtR){
     }
   }
   if(detailed&&EXTRA.length){
-    drawTrueSet(g,EXTRA,100,80,performance.now()/1000*1.2,t=>{const w=windAt(t.lon,t.lat,simSec);return `hsla(${195-powerFrac(Math.hypot(w[0],w[1])*1.05+2.2)*150},90%,${C.dark?62:44}%,.95)`;},null,0.4,occ);
+    drawTrueSet(g,EXTRA,100,80,performance.now()/1000*1.2,t=>{const w=windAt(t.lon,t.lat,simSec);return `hsla(${195-powerFrac(hubWs(Math.hypot(w[0],w[1]),false))*150},90%,${C.dark?62:44}%,.95)`;},null,0.4,occ);
   }
   drawGameMark(g); drawDots(g);
   if(S.big&&detailed){ const t='風機圖示已放大，大小非等比例（按 B 切換）'; g.font='500 12px "Noto Sans TC",sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; g.lineWidth=3; g.strokeStyle=C.halo; g.strokeText(t,W/2,H-12); g.fillStyle=C.warm; g.fillText(t,W/2,H-12); g.textAlign='start'; }
@@ -1962,7 +1994,8 @@ resize();
 map.jumpTo({zoom:zoomForZ(1,cLat)}); applyView();
 setSpeed(2);
 appReady=true;
-window.windGlobe={drawTurbineTrue,doCheckIn,CHECKS,DOT,frameBody,PL,setMusic,map,S,FARMS,select,flyTo,open3D,specForFarm,startFind,drawFarms,stepParticles,applyView,updViewBox,bump:()=>vv++}; // 方便在瀏覽器主控台除錯
+loadWind();
+window.windGlobe={windAt,get WG(){return WG;},drawTurbineTrue,doCheckIn,CHECKS,DOT,frameBody,PL,setMusic,map,S,FARMS,select,flyTo,open3D,specForFarm,startFind,drawFarms,stepParticles,applyView,updViewBox,bump:()=>vv++}; // 方便在瀏覽器主控台除錯
 if(styleReady) onStyle();
 requestAnimationFrame(frame);
 })().catch(e=>{ console.error(e); const el=document.getElementById('loading'); if(el){ el.hidden=false; el.textContent='載入失敗：'+e.message+'，請重新整理頁面。'; } });

@@ -20,6 +20,8 @@ data/typhoons.json       颱風路徑
 data/countries-50m.json  國界（找找看、3D 海岸線）
 data/taiwan-counties.json  台灣縣市界（3D 海岸線）
 tools/build_turbines.py  把 Overpass 下載的 GeoJSON 轉成 turbines.bin.gz
+tools/build_wind.py      下載 NOAA GFS 即時風場，轉成 data/wind.bin.gz（GitHub Actions 每 6 小時執行）
+.github/workflows/pages.yml  發布網站到 GitHub Pages，並先下載最新風場
 ```
 
 ## 在自己電腦上看
@@ -62,6 +64,18 @@ python tools/build_music_zones.py WindGlobe_data/ne_admin1/ne_10m_admin_1_states
 
 ≋ 鈕是風聲・白噪音選單（原野微風、海邊風浪、山谷呼嘯、颱風暴風、白噪音），都是網頁即時合成；開著時背景音樂會自動降到約 4 成音量。
 
+## 即時風場
+
+網站的風（風線、各風場的風速與發電量）來自 NOAA NCEP GFS 全球預報（1° 網格、地面 10 公尺高的風，公有領域）。
+`tools/build_wind.py` 從 NOMADS 下載最新一次預報的 0、6、12、18、24 小時，自己解碼 GRIB2（不需要安裝套件），存成 `data/wind.bin.gz`（約 300 KB）。
+這個檔案由 GitHub Actions 在發布網站前產生，不放進 git（已列在 `.gitignore`）。本機想測試時執行：
+
+```bash
+python tools/build_wind.py
+```
+
+讀不到風場檔時，網站會自動改用原本的程式模擬風場，HUD 會顯示「模擬風場」。
+
 ## 發布到 GitHub Pages
 
 1. 到 https://github.com/new 建立新的 repo，例如取名 `wind-globe`，選 **Public**，其他選項都不要勾（不要加 README），按 **Create repository**。
@@ -76,7 +90,8 @@ python tools/build_music_zones.py WindGlobe_data/ne_admin1/ne_10m_admin_1_states
    ```
 
    第一次推送時會跳出 GitHub 登入視窗，登入即可。
-3. 回到 GitHub 的 repo 頁面 → **Settings** → 左邊 **Pages** → **Build and deployment** 的 Source 選 **Deploy from a branch**，Branch 選 `main`、資料夾選 `/ (root)`，按 **Save**。
+3. 回到 GitHub 的 repo 頁面 → **Settings** → 左邊 **Pages** → **Build and deployment** 的 Source 選 **GitHub Actions**。
+   之後每次 push、以及每 6 小時，`.github/workflows/pages.yml` 會自動下載最新風場並發布網站；進度可以在 repo 的 **Actions** 分頁看到，也可以在那裡按 **Run workflow** 手動更新。
 4. 等一兩分鐘，網址會出現在同一頁上方：`https://你的帳號.github.io/wind-globe/`
 
 之後修改檔案，只要再執行：
