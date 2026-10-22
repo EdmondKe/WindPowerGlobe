@@ -206,7 +206,7 @@ function drawWorld(g,dtR,occ){
     const kk=WT.cl[i]&15, off=WT.cl[i]>>4, D=DCL[kk]||(off?150:90), hh=Math.max(45,D*0.65+15), trueH=hh/1000*lk;
     const Hp=S.big?Math.max(trueH,BIG_MIN*far):trueH; if(!S.big&&Hp<6) continue;
     const cs=Hp*1.1, key=Math.floor(x/cs)+','+Math.floor(y/cs); if(occ.has(key)) continue; occ.add(key);
-    drawTurbineTrue(g,x,y,Hp,Hp*(D/2)/hh,c.ang+i*2.399,col,farAlpha(far)); icons++;
+    drawTurbineTrue(g,x,y,Hp,Hp*(D/2)/hh,c.ang+i*2.399,col,farAlpha(far),WT.skin?WT.skin[i]:0,!!off); icons++;
   }
 }
 
@@ -571,17 +571,78 @@ let labelBoxes=[], tPick=[], EXTRA=[];
 // 「風機放大」時的最小高度（像素）；遠處依比例縮小、變淡
 const BIG_MIN=20;
 function farAlpha(far){ return Math.min(1,(far-0.3)/0.3); }
-function drawTurbineTrue(g,x,y,Hp,R,ang,col,alpha=1){
+// 風機造型（打卡過的音樂區會換成 1–7 其中一種）：0 一般三葉片（離岸的塔底有黃色基座）、1 兩葉片、2 打蛋器型垂直軸（Darrieus）、
+// 3 H 型垂直軸、4 格子鐵塔老風機、5 荷蘭四葉風車、6 紅白葉尖大型風機、7 七彩收藏版
+const MODEL_NAMES=['三葉片風機','兩葉片風機','打蛋器型垂直軸風機','H 型垂直軸風機','格子鐵塔老風機','荷蘭風車','紅白葉尖大型風機','七彩收藏版風機'];
+function bladesPath(g,hx,hy,R,w,ang,n){
+  for(let k=0;k<n;k++){ const a=ang+k*TAU/n, ca=Math.cos(a), sa=Math.sin(a);
+    g.moveTo(hx-sa*w,hy+ca*w); g.lineTo(hx+ca*R,hy+sa*R); g.lineTo(hx+sa*w,hy-ca*w); }
+}
+function drawTurbineTrue(g,x,y,Hp,R,ang,col,alpha=1,model=0,off=false){
   if(alpha<=0.02) return;
   g.globalAlpha=alpha;
-  g.strokeStyle=C.muted; g.lineWidth=Math.max(1,Hp*0.045);
-  g.beginPath(); g.moveTo(x,y); g.lineTo(x,y-Hp); g.stroke();
-  const hx=x, hy=y-Hp, w=Math.max(0.8,R*0.07);
-  g.fillStyle=col; g.beginPath();
-  for(let k=0;k<3;k++){const a=ang+k*TAU/3, ca=Math.cos(a), sa=Math.sin(a);
-    g.moveTo(hx-sa*w,hy+ca*w); g.lineTo(hx+ca*R,hy+sa*R); g.lineTo(hx+sa*w,hy-ca*w);}
-  g.fill();
-  g.beginPath(); g.arc(hx,hy,Math.max(1.2,R*0.06),0,TAU); g.fillStyle=C.warm; g.fill();
+  const hx=x, hy=y-Hp, w=Math.max(0.8,R*0.07), lw=Math.max(1,Hp*0.045);
+  const tower=(c=C.muted,width=lw)=>{ g.strokeStyle=c; g.lineWidth=width; g.beginPath(); g.moveTo(x,y); g.lineTo(x,y-Hp); g.stroke(); };
+  const hub=(c=C.warm)=>{ g.beginPath(); g.arc(hx,hy,Math.max(1.2,R*0.06),0,TAU); g.fillStyle=c; g.fill(); };
+  if(model===2||model===3){ // 垂直軸：細桅桿，葉片繞著桅桿轉（用寬窄變化表現轉動）
+    const cy=y-Hp*0.55, hh=Hp*0.42, rr=Math.max(3,R*0.75);
+    tower(C.muted,Math.max(1,lw*0.8));
+    g.strokeStyle=col; g.lineWidth=Math.max(1.2,Hp*0.04);
+    if(model===2){
+      for(const ph of [0,Math.PI/2]){ const wv=Math.abs(Math.cos(ang*0.5+ph))*rr; g.beginPath(); g.ellipse(x,cy,Math.max(0.6,wv),hh,0,0,TAU); g.stroke(); }
+    }else{
+      const top=cy-hh*0.8, bot=cy+hh*0.8;
+      for(let k=0;k<3;k++){ const a=ang*0.5+k*TAU/3, bx=x+Math.cos(a)*rr, front=Math.sin(a)>0;
+        g.globalAlpha=alpha*(front?1:0.45);
+        g.beginPath(); g.moveTo(x,top); g.lineTo(bx,top); g.moveTo(x,bot); g.lineTo(bx,bot); g.lineWidth=Math.max(0.8,lw*0.6); g.stroke();
+        g.beginPath(); g.moveTo(bx,top-hh*0.15); g.lineTo(bx,bot+hh*0.15); g.lineWidth=Math.max(1.5,Hp*0.06); g.stroke(); }
+      g.globalAlpha=alpha;
+    }
+    g.beginPath(); g.arc(x,y-Hp,Math.max(1.2,Hp*0.04),0,TAU); g.fillStyle=C.warm; g.fill();
+    g.globalAlpha=1; return;
+  }
+  if(model===5){ // 荷蘭風車：木造塔身＋圓頂，四片格子帆
+    const bw=Hp*0.38, tw=Hp*0.2, bh=Hp*0.8;
+    g.fillStyle='#9a6440'; g.beginPath(); g.moveTo(x-bw/2,y); g.lineTo(x+bw/2,y); g.lineTo(x+tw/2,y-bh); g.lineTo(x-tw/2,y-bh); g.closePath(); g.fill();
+    g.fillStyle='#5a3a26'; g.beginPath(); g.arc(x,y-bh,tw*0.62,Math.PI,0); g.fill();
+    g.fillStyle='#ffe9a8'; g.fillRect(x-bw*0.12,y-bh*0.45,bw*0.24,bh*0.18);
+    const sy=y-bh-tw*0.15, L=Math.max(R,Hp*0.75);
+    for(let k=0;k<4;k++){ const a=ang+k*TAU/4, ca=Math.cos(a), sa=Math.sin(a), nx=-sa, ny=ca, s0=L*0.18, sw=L*0.2;
+      g.strokeStyle='#6b4a32'; g.lineWidth=Math.max(1,Hp*0.03); g.beginPath(); g.moveTo(x,sy); g.lineTo(x+ca*L,sy+sa*L); g.stroke();
+      g.fillStyle='rgba(250,245,235,.92)'; g.beginPath(); g.moveTo(x+ca*s0,sy+sa*s0); g.lineTo(x+ca*L,sy+sa*L); g.lineTo(x+ca*L+nx*sw,sy+sa*L+ny*sw); g.lineTo(x+ca*s0+nx*sw,sy+sa*s0+ny*sw); g.closePath(); g.fill();
+      g.strokeStyle='rgba(107,74,50,.6)'; g.lineWidth=0.7; g.stroke(); }
+    g.beginPath(); g.arc(x,sy,Math.max(1.5,Hp*0.04),0,TAU); g.fillStyle='#3a2a1e'; g.fill();
+    g.globalAlpha=1; return;
+  }
+  if(model===4){ // 格子鐵塔：上窄下寬的鋼架，交叉斜撐
+    const bw=Hp*0.22, tw=Hp*0.05;
+    g.strokeStyle=C.muted; g.lineWidth=Math.max(0.8,lw*0.55);
+    g.beginPath(); g.moveTo(x-bw/2,y); g.lineTo(x-tw/2,hy); g.moveTo(x+bw/2,y); g.lineTo(x+tw/2,hy);
+    for(let k=0;k<5;k++){ const t0=k/5, t1=(k+1)/5, w0=bw+(tw-bw)*t0, w1=bw+(tw-bw)*t1, y0=y-Hp*t0, y1=y-Hp*t1;
+      g.moveTo(x-w0/2,y0); g.lineTo(x+w1/2,y1); g.moveTo(x+w0/2,y0); g.lineTo(x-w1/2,y1); }
+    g.stroke();
+  }else if(model===7){ // 七彩：塔身也是彩色
+    const gr=g.createLinearGradient(x,y,x,hy); gr.addColorStop(0,'#ff5a5a'); gr.addColorStop(0.5,'#ffd23f'); gr.addColorStop(1,'#4dff88');
+    tower(gr,lw*1.2);
+  }else{
+    tower();
+    if(off&&model===0){ g.strokeStyle='#f2c200'; g.lineWidth=lw*1.6; g.beginPath(); g.moveTo(x,y); g.lineTo(x,y-Hp*0.14); g.stroke(); }
+  }
+  const n=model===1?2:3;
+  if(model===7){ // 每片葉片不同顏色，顏色隨時間流動
+    const h0=(performance.now()/10)%360;
+    for(let k=0;k<3;k++){ g.fillStyle=`hsl(${(h0+k*120)%360},100%,60%)`; g.beginPath(); bladesPath(g,hx,hy,R*1.05,w*1.2,ang+k*TAU/3,1); g.fill(); }
+    hub('#ffd23f');
+  }else{
+    g.fillStyle=model===4?'#c9ced4':col; g.beginPath(); bladesPath(g,hx,hy,model===1?R*1.08:R,model===1?w*1.25:w,ang,n); g.fill();
+    if(model===6){ // 葉尖紅白相間（航空警示）
+      g.fillStyle='#e8302a'; g.beginPath();
+      for(let k=0;k<3;k++){ const a=ang+k*TAU/3, ca=Math.cos(a), sa=Math.sin(a), r0=R*0.6, r1=R*0.9, ww=w*0.5;
+        g.moveTo(hx+ca*r0-sa*ww,hy+sa*r0+ca*ww); g.lineTo(hx+ca*r1-sa*ww*0.6,hy+sa*r1+ca*ww*0.6); g.lineTo(hx+ca*r1+sa*ww*0.6,hy+sa*r1-ca*ww*0.6); g.lineTo(hx+ca*r0+sa*ww,hy+sa*r0-ca*ww); }
+      g.fill();
+    }
+    hub();
+  }
   g.globalAlpha=1;
 }
 function drawTrueSet(g,list,D,hh,ang0,colFn,farm,spKm,occ){
@@ -597,7 +658,7 @@ function drawTrueSet(g,list,D,hh,ang0,colFn,farm,spKm,occ){
     const Hp=S.big?Math.max(trueH,BIG_MIN*far):trueH;
     if(!S.big&&Hp<6) continue;
     if(S.big&&Hp>trueH*1.05){ const cs=Hp*0.8, key=Math.floor(p[0]/cs)+','+Math.floor(p[1]/cs); if(occ.has(key)) continue; occ.add(key); }
-    drawTurbineTrue(g,p[0],p[1],Hp,Hp*(D_/2)/h_,ang0+t.ang,col,farAlpha(far));
+    drawTurbineTrue(g,p[0],p[1],Hp,Hp*(D_/2)/h_,ang0+t.ang,col,farAlpha(far),t.skin||0,farm?farm.k!=='on':false);
   }
 }
 
@@ -1146,6 +1207,7 @@ function updBook(){
     if(got) b.onclick=()=>{ $('#book').hidden=true; userTook(); select(f,true); };
     grid.appendChild(b);
   }
+  updChecks();
 }
 $('#bkClose').onclick=()=>$('#book').hidden=true;
 
@@ -1224,6 +1286,77 @@ function drawGameMark(g){
   g.beginPath(); g.arc(p[0],p[1],10+age*20,0,TAU); g.stroke();
   g.beginPath(); if(G.mark.ok){g.moveTo(p[0]-7,p[1]);g.lineTo(p[0]-2,p[1]+6);g.lineTo(p[0]+8,p[1]-6);}else{g.moveTo(p[0]-6,p[1]-6);g.lineTo(p[0]+6,p[1]+6);g.moveTo(p[0]+6,p[1]-6);g.lineTo(p[0]-6,p[1]+6);} g.stroke();
   g.globalAlpha=1;
+}
+
+/* ================= 打卡：用手機 GPS 走到風車附近（2 公里內）打卡，這一整個音樂區的風車換成特別造型 ================= */
+let CHECKS=[]; try{ CHECKS=JSON.parse(localStorage.getItem('windglobe-checkins')||'[]'); }catch(e){}
+function saveChecks(){ try{ localStorage.setItem('windglobe-checkins',JSON.stringify(CHECKS)); }catch(e){} }
+function modelFor(key){ let h=7; for(const ch of String(key)) h=(h*31+ch.charCodeAt(0))>>>0; return 1+h%7; }
+function inZoneKey(key,lon,lat){ // 只測這一個音樂區（key 由 regionAtLL 產生）
+  const m=/(z|c)(\d+)$/.exec(key); if(!m) return false;
+  if(m[1]==='z'){ const z=ZONES&&ZONES[+m[2]]; if(!z) return false; const b=z.b; return lat>=b[1]&&lat<=b[3]&&lon>=b[0]&&lon<=b[2]&&inRings(z.r,lon,lat); }
+  const c=CIRC[+m[2]]; return !!c&&inEllipse(c,lon,lat);
+}
+function zoneBox(key){
+  const m=/(z|c)(\d+)$/.exec(key); if(!m) return null;
+  if(m[1]==='z'){ const z=ZONES&&ZONES[+m[2]]; return z?z.b:null; }
+  const c=CIRC[+m[2]]; if(!c) return null; const dx=c.a/(111.32*Math.cos(c.lat*D2R)), dy=c.a/110.57;
+  return [c.lon-dx,c.lat-dy,c.lon+dx,c.lat+dy];
+}
+// 依打卡紀錄把每支風機的造型記在 WT.skin（全球）與 t.skin（台灣風場）；音樂區資料更新後也會用打卡座標重新對應
+function applySkins(){
+  if(!ZONES) return;
+  WT.skin=new Uint8Array(WT.n);
+  for(const f of FARMS) if(f.tur) for(const t of f.tur) t.skin=0;
+  for(const rec of CHECKS){
+    const r=regionAtLL(rec.lon,rec.lat); if(!r) continue;
+    rec.key=r.key; const m=rec.m||(rec.m=modelFor(r.key)), b=zoneBox(r.key); if(!b) continue;
+    for(const c of WCELLS){ if(c.cx+0.5<b[0]||c.cx-0.5>b[2]||c.cy+0.5<b[1]||c.cy-0.5>b[3]) continue;
+      for(let i=c.start;i<c.start+c.n;i++){ const lon=WT.xy[2*i]/1e5, lat=WT.xy[2*i+1]/1e5; if(lon>=b[0]&&lon<=b[2]&&lat>=b[1]&&lat<=b[3]&&inZoneKey(r.key,lon,lat)) WT.skin[i]=m; } }
+    for(const f of FARMS) if(f.tur) for(const t of f.tur) if(inZoneKey(r.key,t.lon,t.lat)) t.skin=m;
+  }
+  saveChecks(); vv++;
+}
+async function doCheckIn(lon,lat,acc){
+  loadZones(); await zonesReady();
+  const near=nearPts(lon,lat,2);
+  if(!near.length){
+    const far=nearPts(lon,lat,80);
+    const msg=far.length?`你附近 2 公里內沒有風車，最近的一支在 ${far[0].d.toFixed(1)} 公里外，走近一點再打卡！`:'你附近沒有風車資料，到有風車的地方再打卡吧！';
+    toast('📍 '+msg,5000); say(msg); return;
+  }
+  const t=near[0], r=regionAtLL(t.lon,t.lat);
+  const key=r?r.key:`p${t.lon.toFixed(3)},${t.lat.toFixed(3)}`, name=r?r.name:'這裡的風車';
+  const done=CHECKS.find(c=>c.key===key||(Math.abs(c.lon-t.lon)<0.002&&Math.abs(c.lat-t.lat)<0.002));
+  flyTo(t.lon,t.lat,0,2200,0.5*Math.min(W,H)/3);
+  if(done){ toast(`📍 ${name}已經打過卡囉！這裡的風車是「${MODEL_NAMES[done.m]}」`,4000); return; }
+  const m=modelFor(key);
+  CHECKS.push({key,name,lon:t.lon,lat:t.lat,t:Date.now(),m,acc:Math.round(acc||0)});
+  applySkins(); addStar(); confetti($('#map')); updBook();
+  const msg=`打卡成功！${name}的風車變成「${MODEL_NAMES[m]}」了！`;
+  toast('📍 '+msg,5000); say(msg);
+}
+$('#bCheck').onclick=()=>{
+  if(!navigator.geolocation){ toast('這個瀏覽器沒辦法定位，換手機的瀏覽器試試看'); return; }
+  toast('📍 定位中⋯（請允許網頁使用你的位置）',4000);
+  navigator.geolocation.getCurrentPosition(
+    p=>{ if(p.coords.accuracy>3000) toast(`定位誤差約 ${Math.round(p.coords.accuracy/1000)} 公里，可能不夠準，到戶外再試一次會比較好`,4000);
+      doCheckIn(p.coords.longitude,p.coords.latitude,p.coords.accuracy); },
+    e=>toast(e.code===1?'沒有允許使用位置，所以沒辦法打卡（可以在瀏覽器的網站設定裡打開）':'定位失敗，到空曠一點的地方再試一次',5000),
+    {enableHighAccuracy:true,timeout:20000,maximumAge:60000});
+};
+function updChecks(){
+  const el=$('#bkChecks'); if(!el) return; el.innerHTML='';
+  $('#bkCheckN').textContent=CHECKS.length?`（${CHECKS.length} 個地方）`:'';
+  if(!CHECKS.length){ el.innerHTML='<p class="bk-none">還沒有打卡紀錄。到有風車的地方，按地圖右邊的「📍 打卡」，那裡的風車就會變成特別的造型！</p>'; return; }
+  for(const c of CHECKS.slice().reverse()){
+    const b=document.createElement('button'), d=new Date(c.t); b.className='ck';
+    b.innerHTML='<b></b><span></span><small></small>';
+    b.querySelector('b').textContent='📍 '+c.name; b.querySelector('span').textContent=MODEL_NAMES[c.m]||'';
+    b.querySelector('small').textContent=`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+    b.onclick=()=>{ $('#book').hidden=true; userTook(); flyTo(c.lon,c.lat,0,2200,0.5*Math.min(W,H)/3); };
+    el.append(b);
+  }
 }
 
 /* ================= 遊戲三：風車點點樂（點風車彈 Do Re Mi、照順序連線數數字或 ABC） ================= */
@@ -1441,16 +1574,18 @@ const MP3_VOL=0.55;
 // 音樂區＝30 支以上相鄰風機圍成的圓滑區塊，沿行政區切開；不到 30 支的小群（包括只有 1 支）各用一個圓圈住（data/music-zones.json，由 tools/build_music_zones.py 產生，
 // 第一次播音樂時才下載）。地圖中心進入一個音樂區就換歌，在區外維持原本的歌；台灣的音樂區依序播台灣歌單
 let ZONES=null, CIRC=[], zonesLoading=false;
+let ZP=null;
+const zonesReady=()=>ZP||Promise.resolve();
 function loadZones(){
-  if(ZONES||zonesLoading) return; zonesLoading=true;
-  getJSON('data/music-zones.json').then(d=>{
+  if(ZONES||zonesLoading) return ZP; zonesLoading=true;
+  ZP=getJSON('data/music-zones.json').then(d=>{
     const q=d.q||1000;
     ZONES=d.zones.map(z=>({n:z.n,tw:!!z.tw,w:z.w,b:z.b.map(v=>v/q),r:z.r.map(a=>{ const o=new Float32Array(a.length); let x=0,y=0;
       for(let k=0;k<a.length;k+=2){ x+=a[k]; y+=a[k+1]; o[k]=x/q; o[k+1]=y/q; } return o; })}));
     // 不到 30 支的小群：[經度×q, 緯度×q, 半徑公尺, 風機數, 名稱編號, 台灣]
     // 不到 30 支的小群：[經度×q, 緯度×q, 長半軸公尺, 短半軸公尺, 長軸方向（0.1 度）, 風機數, 名稱編號, 台灣]
     CIRC=(d.circles||[]).map(c=>({lon:c[0]/q,lat:c[1]/q,a:c[2]/1000,b:c[3]/1000,ang:c[4]/10*D2R,n:(d.names||[])[c[6]]||'',tw:!!c[7]}));
-    colorZones(); lastRegT=-1e9; setMusicBorderData();
+    colorZones(); lastRegT=-1e9; setMusicBorderData(); applySkins();
   }).catch(e=>{ console.error(e); zonesLoading=false; });
 }
 function inRings(rings,x,y){ // 奇偶規則，內環自然扣掉
@@ -1461,19 +1596,22 @@ function inRings(rings,x,y){ // 奇偶規則，內環自然扣掉
   }
   return ins;
 }
+function inEllipse(c,lon,lat,kx=111.32*Math.cos(lat*D2R)){
+  const dy=(lat-c.lat)*110.57; if(Math.abs(dy)>c.a) return false;
+  const dx=(((lon-c.lon)%360+540)%360-180)*kx; if(Math.abs(dx)>c.a) return false;
+  const u=dx*Math.cos(c.ang)+dy*Math.sin(c.ang), v=-dx*Math.sin(c.ang)+dy*Math.cos(c.ang);
+  return (u/c.a)**2+(v/c.b)**2<=1;
+}
 // 回傳 {key, name, tw}；不在任何音樂區裡回傳 null
 function regionAtLL(lon,lat){
   if(!ZONES) return null;
   for(let k=0;k<ZONES.length;k++){
     const z=ZONES[k], b=z.b; if(lat<b[1]||lat>b[3]||lon<b[0]||lon>b[2]) continue;
-    if(inRings(z.r,lon,lat)) return {key:(z.tw?'tw':'z')+k,name:z.n,tw:z.tw};
+    if(inRings(z.r,lon,lat)) return {key:(z.tw?'tw:':'')+'z'+k,name:z.n,tw:z.tw};
   }
   const kx=111.32*Math.cos(lat*D2R);
   for(let k=0;k<CIRC.length;k++){
-    const c=CIRC[k], dy=(lat-c.lat)*110.57; if(Math.abs(dy)>c.a) continue;
-    const dx=(((lon-c.lon)%360+540)%360-180)*kx; if(Math.abs(dx)>c.a) continue;
-    const u=dx*Math.cos(c.ang)+dy*Math.sin(c.ang), v=-dx*Math.sin(c.ang)+dy*Math.cos(c.ang);
-    if((u/c.a)**2+(v/c.b)**2<=1) return {key:(c.tw?'tw':'c')+k,name:c.n,tw:c.tw};
+    if(inEllipse(CIRC[k],lon,lat,kx)) return {key:(CIRC[k].tw?'tw:':'')+'c'+k,name:CIRC[k].n,tw:CIRC[k].tw};
   }
   return null;
 }
@@ -1824,7 +1962,7 @@ resize();
 map.jumpTo({zoom:zoomForZ(1,cLat)}); applyView();
 setSpeed(2);
 appReady=true;
-window.windGlobe={DOT,frameBody,PL,setMusic,map,S,FARMS,select,flyTo,open3D,specForFarm,startFind,drawFarms,stepParticles,applyView,updViewBox,bump:()=>vv++}; // 方便在瀏覽器主控台除錯
+window.windGlobe={drawTurbineTrue,doCheckIn,CHECKS,DOT,frameBody,PL,setMusic,map,S,FARMS,select,flyTo,open3D,specForFarm,startFind,drawFarms,stepParticles,applyView,updViewBox,bump:()=>vv++}; // 方便在瀏覽器主控台除錯
 if(styleReady) onStyle();
 requestAnimationFrame(frame);
 })().catch(e=>{ console.error(e); const el=document.getElementById('loading'); if(el){ el.hidden=false; el.textContent='載入失敗：'+e.message+'，請重新整理頁面。'; } });

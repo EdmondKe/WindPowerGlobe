@@ -260,3 +260,9 @@ body.v3on{overflow:hidden}
 #dhint{font-size:14px;color:var(--muted);text-align:center}
 .gm-voice{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 #gmVoiceSel{flex:1;min-width:0;border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:999px;padding:6px 10px;font:inherit;font-size:13px}
+.bk-h{margin:18px 0 8px;font-size:18px;font-weight:900}
+.bk-h small{font-size:13px;color:var(--warm);font-family:Sora,"Noto Sans TC",sans-serif}
+.bk-checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.bk-none{color:var(--muted);font-size:14px;margin:0}
+.ck{display:flex;flex-direction:column;align-items:flex-start;text-align:left;border:2px solid var(--accent);background:var(--bg);border-radius:12px;padding:8px 10px;gap:2px}
+.ck b{font-size:14px}.ck span{font-size:12px;color:var(--warm);font-weight:700}.ck small{font-size:11px;color:var(--muted)}
