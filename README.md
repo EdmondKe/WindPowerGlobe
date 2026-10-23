@@ -135,6 +135,11 @@ git push
 
 GitHub Pages 會自動重新發布。
 
+## 也發布到 Cloudflare Pages
+
+同一份網站也會發布到 Cloudflare Pages（`https://wind-globe.pages.dev`，名字被用走時 Cloudflare 會自動加字尾，實際網址看 Cloudflare 後台的 Workers & Pages）。
+需要在 repo 的 **Settings → Secrets and variables → Actions** 設定 `CLOUDFLARE_API_TOKEN`（權限只要「Cloudflare Pages：編輯」）和 `CLOUDFLARE_ACCOUNT_ID`；沒設定的話這一步會自動跳過，只發布到 GitHub Pages。
+
 ## 資料來源與授權
 
 - 地圖：© [OpenFreeMap](https://openfreemap.org/) © [OpenMapTiles](https://www.openmaptiles.org/)，資料 © [OpenStreetMap 貢獻者](https://www.openstreetmap.org/copyright)（ODbL 1.0）
