@@ -10,6 +10,9 @@
     2. 每群把有風機的格子中心各畫一個 2.5 公里的圓，合併後再「膨脹 2 公里、收縮 2 公里」把縫補起來、邊緣變圓。
     3. 跟行政區取交集切成幾塊；海上的部分併到這群風機最多的那一塊，完全在海上的群用最近的行政區命名。
        切完不到 30 支的小塊併回同一群最大的那塊。
+    4. 不到 30 支的小群用橢圓圈起來。
+    5. 有重疊的圈（區塊、橢圓）合併成一個區塊；所有區塊當成一張拼圖一起簡化，相鄰區塊的共用邊界才不會交錯。
+    6. 最後檢查每支風機都在某個圈裡，漏掉的補一個 1 公里的小圓（重疊的再合併一次）。
 
 輸出 data/music-zones.json：
     {"q":1000, "zones":[{"n":名稱, "tw":1(台灣), "w":風機數, "b":[西,南,東,北], "r":[[x0,y0,dx,dy,...], ...]}]}
@@ -27,6 +30,7 @@ from shapely.ops import unary_union
 MIN_N = 30        # 一個音樂區至少要有幾支風機
 CELL = 2.8        # 分群格子（公里）
 R_DOT = 2.5       # 每格畫的圓半徑（公里）
+DOT_GRID = 1.0    # 畫圓用的小格（公里）：每格一個圓心，風機離圓心最多約 1.4 公里，一定在圈內
 CLOSE = 2.0       # 補縫、修圓（公里）
 SIMP = 0.3        # 外框簡化（公里）
 Q = 1000
@@ -83,6 +87,39 @@ def encode(g):
             out.append(flat)
     return out
 
+def ellipse(lon0, lat0, a_km, b_km, ang):
+    """橢圓的多邊形（經緯度），跟網頁判斷橢圓的方式一樣：長軸方向由東往北逆時針"""
+    k = 111.32 * math.cos(math.radians(lat0)); ca, sa = math.cos(ang), math.sin(ang)
+    return Polygon([((a_km * math.cos(t) * ca - b_km * math.sin(t) * sa) / k + lon0, (a_km * math.cos(t) * sa + b_km * math.sin(t) * ca) / 110.57 + lat0)
+                    for t in (j / 48 * 2 * math.pi for j in range(48))])
+
+def merge_overlaps(zones, circles):
+    """有重疊（面積大於約 0.001 平方公里）的圈連成一組，每組合併成一個區塊，名稱用風機最多的那個；沒有重疊的橢圓保持橢圓"""
+    items = [('z', z['g'], z) for z in zones] + [('c', e, r) for r, e in circles]
+    geoms = [it[1] for it in items]; t = shapely.STRtree(geoms)
+    par = list(range(len(items)))
+    def fnd(i):
+        while par[i] != i: par[i] = par[par[i]]; i = par[i]
+        return i
+    for i, g in enumerate(geoms):
+        for j in t.query(g, predicate='intersects'):
+            j = int(j)
+            if j > i and g.intersection(geoms[j]).area > 1e-7: par[fnd(i)] = fnd(j)
+    grp = defaultdict(list)
+    for i in range(len(items)): grp[fnd(i)].append(i)
+    zs, cs, merged = [], [], 0
+    for ids in grp.values():
+        if len(ids) == 1 and items[ids[0]][0] == 'c':
+            cs.append((items[ids[0]][2], geoms[ids[0]])); continue
+        ws = [(items[i][2]['w'] if items[i][0] == 'z' else items[i][2][5]) for i in ids]
+        top = items[ids[ws.index(max(ws))]]
+        name = top[2]['n'] if top[0] == 'z' else top[2][6]
+        tw = any((items[i][2]['tw'] if items[i][0] == 'z' else items[i][2][7]) for i in ids)
+        g = unary_union([geoms[i] for i in ids]) if len(ids) > 1 else geoms[ids[0]]
+        merged += len(ids) - 1
+        zs.append({'n': name, 'tw': 1 if tw else 0, 'w': sum(ws), 'g': shapely.make_valid(g)})
+    return zs, cs, merged
+
 def main():
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     src = sys.argv[1] if len(sys.argv) > 1 else 'WindGlobe_data/ne_admin1/ne_10m_admin_1_states_provinces.shp'
@@ -100,6 +137,12 @@ def main():
     for p, g in topo_features(root / 'data' / 'taiwan-counties.json', 'counties'):
         adm_names.append(p['COUNTYNAME']); adm_geoms.append(g); adm_tw.append(True)
     tree = shapely.STRtree(adm_geoms)
+    def adm_of(x, y):
+        """點所在（或最近）的行政區；台灣縣市只有在台灣這一側才算"""
+        c_ll = shapely.Point(x, y); tw_side = 119.3 <= x <= 122.6 and 21.5 <= y <= 25.5
+        cand = [int(j) for j in tree.query(c_ll.buffer(1))] or [int(tree.nearest(c_ll))]
+        cand = [j for j in cand if tw_side or not adm_tw[j]] or cand
+        return min(cand, key=lambda j: adm_geoms[j].distance(c_ll))
     # 圖鑑裡的風場：區塊附近（一般 5 公里，大區塊放寬）有的話，用風場名稱命名（例如「海龍風場」比「澎湖縣」貼切）
     farms = [(f['n'].split('（')[0], f['lon'], f['lat']) for f in json.loads((root / 'data' / 'farms.json').read_text(encoding='utf-8'))['farms']]
 
@@ -134,9 +177,10 @@ def main():
         to_km = lambda x, y: ((x - lon0) * k, (y - lat0) * 110.57)
         to_ll = lambda x, y: (x / k + lon0, y / 110.57 + lat0)
         # 2. 圓滑的區塊（在以這群中心為準的公里座標上做）
+        # 每 1 公里的小格取一支風機當圓心（用分群的大格會漏掉格子角落的風機，讓它跑到圈外）
         centers = {}
         for i in idx:
-            x, y = to_km(lon[i], lat[i]); key = (math.floor(x / CELL), math.floor(y / CELL))
+            x, y = to_km(lon[i], lat[i]); key = (math.floor(x / DOT_GRID), math.floor(y / DOT_GRID))
             centers.setdefault(key, (x, y))
         blob = unary_union([shapely.Point(p).buffer(R_DOT, 12) for p in centers.values()]).buffer(CLOSE, 12).buffer(-CLOSE, 12)
         # 3. 換回經緯度，跟行政區切開
@@ -164,7 +208,6 @@ def main():
             ai = min(cand, key=lambda j: adm_geoms[j].distance(c_ll))
             big = [[ai, blob, len(idx)]]
         for ai, g_ll, c in big:
-            g_ll = g_ll.simplify(SIMP / 111)
             if g_ll.is_empty: continue
             w, s, e, nn = g_ll.bounds
             # 找風場名稱的範圍：一般 5 公里，大區塊依大小放寬（最多 30 公里）
@@ -173,10 +216,7 @@ def main():
             for fn, fx, fy in farms:
                 d = g_ll.distance(shapely.Point(fx, fy))
                 if d < best: best, name = d, fn
-            zones.append({'n': name, 'tw': 1 if adm_tw[ai] else 0, 'w': c,
-                          'b': [round(w * Q), round(s * Q), round(e * Q), round(nn * Q)], 'r': encode(g_ll)})
-
-    zones = [z for z in zones if z['r']]
+            zones.append({'n': name, 'tw': 1 if adm_tw[ai] else 0, 'w': c, 'g': g_ll})
 
     # 4. 不到 30 支的小群（包括只有 1 支）：沿著風機排列的方向圈一個橢圓（只有 1 支時是圓），靠得近的風機會在同一群、同一個圈
     names, name_idx, circles = [], {}, []
@@ -199,7 +239,35 @@ def main():
         cand = [int(j) for j in tree.query(c_ll.buffer(1))] or [int(tree.nearest(c_ll))]
         cand = [j for j in cand if tw_side or not adm_tw[j]] or cand
         ai = min(cand, key=lambda j: adm_geoms[j].distance(c_ll))
-        circles.append([round(lon0 * Q), round(lat0 * Q), round(a_km * 1000), round(b_km * 1000), round(math.degrees(ang) * 10), len(idx), nid(adm_names[ai]), 1 if adm_tw[ai] else 0])
+        rec = [round(lon0 * Q), round(lat0 * Q), round(a_km * 1000), round(b_km * 1000), round(math.degrees(ang) * 10), len(idx), adm_names[ai], 1 if adm_tw[ai] else 0]
+        circles.append((rec, ellipse(lon0, lat0, a_km, b_km, ang)))
+
+    # 5. 有重疊的圈（區塊和區塊、區塊和橢圓、橢圓和橢圓）合併成一個區塊
+    zones, circles, m1 = merge_overlaps(zones, circles)
+    # 6. 所有區塊一起簡化（相鄰區塊的共用邊界會簡化成同一條線，不會交錯）。
+    #    先把相鄰區塊之間極小的重疊切掉，變成剛好拼在一起的拼圖，簡化才不會把重疊放大
+    gs = [shapely.set_precision(z['g'], 1e-6) for z in zones]; t3 = shapely.STRtree(gs)
+    for i in range(len(gs)):
+        for j in t3.query(gs[i], predicate='intersects'):
+            j = int(j)
+            if j < i and gs[i].intersection(gs[j]).area > 0: gs[i] = shapely.make_valid(gs[i].difference(gs[j]))
+    simp = shapely.coverage_simplify(np.array(gs, dtype=object), SIMP / 111)
+    for z, g in zip(zones, simp): z['g'] = shapely.make_valid(g)
+    zones = [z for z in zones if not z['g'].is_empty]
+    # 7. 保險：每支風機都要在某個圈裡（切行政區、簡化邊緣都可能漏掉少數幾支）；沒圈到的補一個 1 公里的小圓
+    cover = unary_union([z['g'] for z in zones] + [e for _, e in circles]); shapely.prepare(cover)
+    X, Y = np.array(lon), np.array(lat)
+    lost = [int(i) for i in np.nonzero(~(shapely.contains_xy(cover, X, Y) | shapely.intersects_xy(cover, X, Y)))[0]]
+    for i in lost:
+        ai = adm_of(lon[i], lat[i])
+        circles.append(([round(lon[i] * Q), round(lat[i] * Q), 1000, 1000, 0, 1, adm_names[ai], 1 if adm_tw[ai] else 0], ellipse(lon[i], lat[i], 1, 1, 0)))
+    # 8. 補的小圓如果跟別的圈重疊，再合併一次（這次不再簡化）
+    zones, circles, m2 = merge_overlaps(zones, circles)
+    print(f'重疊的圈合併了 {m1 + m2} 次；沒被圈到、補了小圓的風機 {len(lost)} 支')
+    for z in zones:
+        w, s_, e, nn = z['g'].bounds; z['b'] = [round(w * Q), round(s_ * Q), round(e * Q), round(nn * Q)]; z['r'] = encode(z['g'])
+    zones = [{k2: v for k2, v in z.items() if k2 != 'g'} for z in zones if z['r']]
+    circles = [r[:6] + [nid(r[6]), r[7]] for r, _ in circles]
 
     dst = root / 'data' / 'music-zones.json'
     dst.write_text(json.dumps({'_note': f'音樂區：{MIN_N} 支以上相鄰風機圍成的圓滑區塊（zones，沿行政區切開），不到 {MIN_N} 支的小群用橢圓（circles：[經度×q, 緯度×q, 長半軸公尺, 短半軸公尺, 長軸方向（由東往北逆時針，0.1 度）, 風機數, 名稱編號, 台灣]）。由 tools/build_music_zones.py 產生。',

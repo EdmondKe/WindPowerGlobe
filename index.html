@@ -18,7 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Sora:wght@500;700;800&display=swap" rel="stylesheet">
 <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
 <link href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" rel="stylesheet">
-<link href="assets/style.css?v=20261024d" rel="stylesheet">
+<link href="assets/style.css?v=20261024g" rel="stylesheet">
 </head>
 <body>
 <div class="wrap">
@@ -50,7 +50,7 @@
     <div class="side">
       <button id="bView" aria-pressed="true" title="切換地球／平面 (G)"><span>◍</span>視角<small id="viewLbl">地球</small></button>
       <button id="bTilt" aria-pressed="true" title="立體地形、傾斜視角 (P)"><span>⛰</span>地形<small id="tiltLbl">立體</small></button>
-      <button id="bWind" aria-pressed="true" title="風的流線 (W)"><span>≋</span>風線</button>
+      <button id="bWind" aria-pressed="true" title="風線、颱風的開關（W 直接開關風線）"><span>≋</span>風線</button>
       <button id="bNight" aria-pressed="true" title="白天黑夜 (N)"><span>☾</span>晝夜</button>
       <button id="bLabel" aria-pressed="true" title="風場名稱 (L)"><span>⌖</span>標示</button>
       <button id="b3d" aria-pressed="false" title="用 3D 看這附近的風機"><span>▲</span>3D<small>風場</small></button>
@@ -108,6 +108,11 @@
     <button class="big" id="gmDots"><b>風車點點樂</b><small>照順序點風車連線，練習數字和 ABC（平常點風車也會有 Do Re Mi）</small></button>
     <button class="big" id="gmBook"><b>風場貼紙簿</b><small>點開風場就能收集貼紙</small></button>
     <div class="gm-voice"><button class="pill" id="gmVoice" aria-pressed="true">語音朗讀：開</button><select id="gmVoiceSel" aria-label="朗讀的聲音和音調" hidden></select><button class="pill" id="gmVoiceTry">試聽</button></div>
+  </div>
+  <div class="gmenu wmenu" id="wmenu" hidden>
+    <div class="gm-h">風線・颱風</div>
+    <button class="big" id="wmWind"><b>風的流線</b><small>地圖上流動的細線（W）</small></button>
+    <button class="big" id="wmTy"><b>颱風</b><small>可愛颱風圖示和颱風路徑</small></button>
   </div>
   <div class="gmenu" id="smenu" hidden>
     <div class="gm-h">風聲・白噪音<span>開著時音樂會變小聲</span></div>
@@ -202,6 +207,6 @@
 <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
-<script src="assets/app.js?v=20261024d"></script>
+<script src="assets/app.js?v=20261024g"></script>
 </body>
 </html>
