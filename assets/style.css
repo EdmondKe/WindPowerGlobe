@@ -63,6 +63,7 @@ h1{font-size:clamp(22px,3vw,30px);font-weight:900;margin:0;letter-spacing:.04em;
 .bar{height:6px;border-radius:3px;background:var(--line);margin-top:4px;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--warm));transition:width .4s}
 .side{position:absolute;right:12px;top:64px;max-height:calc(100% - 100px);overflow-y:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:2px;background:var(--hud);border:1px solid var(--line);border-radius:14px;padding:6px 4px;z-index:3;backdrop-filter:blur(6px)}
+.side button[hidden]{display:none}
 .side button{background:none;border:0;border-radius:10px;padding:5px 8px;display:flex;flex-direction:column;align-items:center;font-size:12px;line-height:1.25;color:var(--muted);min-width:52px}
 .side button span{font-size:17px;line-height:1}
 .side button[aria-pressed="true"]{color:var(--text)}
@@ -177,6 +178,27 @@ details.src li{font-size:13px;color:var(--muted);margin:4px 0}
 .gmenu{position:absolute;right:14px;bottom:76px;z-index:8;background:var(--surface2);border:1px solid var(--line);border-radius:16px;padding:12px;display:grid;gap:8px;width:270px;box-shadow:0 10px 40px rgba(0,0,0,.25)}
 .gmenu[hidden]{display:none}
 .gmenu.wmenu{top:64px;bottom:auto;right:84px;width:230px}
+/* 觀看設定面板（地圖鈕） */
+.mset{position:absolute;top:64px;right:84px;z-index:9;width:min(340px,calc(100% - 100px));background:var(--surface2);border:1px solid var(--line);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35);overflow:hidden}
+.mset[hidden]{display:none}
+.mset{max-height:calc(100% - 80px);overflow-y:auto;scrollbar-width:thin}
+.mset-sec{padding:8px 14px 2px;font-size:11px;font-weight:800;letter-spacing:.12em;color:var(--muted);background:color-mix(in srgb,var(--line) 35%,transparent)}
+.mset-h{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;font-weight:800;font-size:14px;color:var(--muted);border-bottom:1px solid var(--line)}
+.mset-h button{border:0;background:none;color:var(--text);font-size:18px;cursor:pointer;line-height:1}
+.mset-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);font-weight:800;font-size:14px}
+.mset-row:last-child{border-bottom:0}
+.mset-row>span{display:flex;flex-direction:column;min-width:0}
+.mset-row small{font-weight:500;font-size:11px;color:var(--muted)}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;flex:none}
+.seg button{border:0;background:none;color:var(--text);font:inherit;font-weight:700;font-size:13px;padding:7px 11px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.sw{flex:none;width:42px;height:24px;border-radius:999px;border:0;background:var(--line);position:relative;cursor:pointer}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .15s}
+.sw[aria-checked="true"]{background:var(--accent)}
+.sw[aria-checked="true"]::after{left:21px}
+.sw:disabled{opacity:.4;cursor:default}
+@media (max-width:760px){.mset{right:8px;left:8px;width:auto;top:56px}}
 .gm-h{display:flex;justify-content:space-between;font-weight:900;font-size:16px}
 .gm-h span{font-size:13px;color:var(--muted);font-weight:500}
 .gmenu button.big{display:flex;flex-direction:column;align-items:flex-start;text-align:left;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:10px 12px}
@@ -290,3 +312,83 @@ body.v3on{overflow:hidden}
 .bk-none{color:var(--muted);font-size:14px;margin:0}
 .ck{display:flex;flex-direction:column;align-items:flex-start;text-align:left;border:2px solid var(--accent);background:var(--bg);border-radius:12px;padding:8px 10px;gap:2px}
 .ck b{font-size:14px}.ck span{font-size:12px;color:var(--warm);font-weight:700}.ck small{font-size:11px;color:var(--muted)}
+
+/* ---------- 馬卡龍配色（依 E:\Python\docs\01_mac_ui_GUI規範.md）：按鈕、標題、資料來源標籤；底色維持原本的；一律配深字 ---------- */
+:root{--m-lemon:#FBFE97;--m-cream:#FBE582;--m-peach:#FFD791;--m-sakura:#FFC8CB;--m-berry:#F1B8DB;--m-mint:#6DDDDF;--m-sky:#85D2E6;--m-corn:#8AAEFA;--m-haze:#8DA4D0;--m-lav:#B9A7F3;--m-ink:#3A3A45;--m-pista:#C6E9A4;--m-blue:#4A8FF5}
+/* 每個馬卡龍元素用 --mc 指定顏色：播放控制（暫停、現在）矢車菊藍、導覽／放空／音樂／風聲亮藍色、小遊戲檸檬黃 */
+#bPlay,#bNow{--mc:var(--m-corn)} #bTour,#bZen,#bMus,#bSnd{--mc:var(--m-blue)} #bGames{--mc:var(--m-lemon)}
+.pill[aria-pressed="true"],.sw,.kbd-row.act button.ok{--mc:var(--m-mint)}
+.chips button[aria-pressed="true"],.seg button[aria-pressed="true"]{--mc:var(--m-corn)}
+.side button[aria-pressed="true"] span{--mc:var(--m-sky)}
+.mac-h{--mc:var(--m-lav)}
+.ld,details.src li .tag,details.box>summary .fold svg{--mc:var(--m-peach)}
+/* 更新紀錄的標籤用自己的顏色，不跟日期（蜜桃橘）、標題（薰衣草紫）撞色：新增＝開心果綠（新增的馬卡龍色）、改版＝天空藍、修正＝莓果粉 */
+.lt-new{--mc:var(--m-pista)} .lt-rev{--mc:var(--m-sky)} .lt-fix{--mc:var(--m-berry)}
+/* 亮色：實心馬卡龍＋深字 */
+.mc,#bNow,#bTour,#bZen,#bGames,#bMus,#bSnd,#bPlay,.pill[aria-pressed="true"],.chips button[aria-pressed="true"],.seg button[aria-pressed="true"],.kbd-row.act button.ok,.side button[aria-pressed="true"] span,.mac-h,.ld,.lt,details.src li .tag,details.box>summary .fold svg{
+  background:var(--mc);color:var(--m-ink);border:1.5px solid var(--mc)}
+#bNow,#bTour,#bZen,#bGames,#bMus,#bSnd,#bPlay{font-weight:800}
+/* 導覽、放空、音樂、風聲用亮藍色，藍色比較深，配白字 */
+#bTour,#bZen,#bMus,#bSnd{color:#fff}
+.sw[aria-checked="true"]{background:var(--mc)}
+#bTour[aria-pressed="true"],#bZen[aria-pressed="true"],#bMus[aria-pressed="true"],#bSnd[aria-pressed="true"]{background:var(--m-cream);border-color:var(--m-ink);box-shadow:0 0 0 3px rgba(58,58,69,.12)}
+#bNow:hover,#bTour:hover,#bZen:hover,#bGames:hover,#bMus:hover,#bSnd:hover,#bPlay:hover{filter:brightness(1.05) saturate(1.1)}
+.side button[aria-pressed="true"] span{border-radius:8px;padding:0 4px}
+.mac-h{display:inline-block;border-radius:12px;padding:2px 14px}
+/* 暗色：底色拿掉，變成發光的馬卡龍線條，文字白色 */
+:root[data-dark="1"] :is(#bNow,#bTour,#bZen,#bGames,#bMus,#bSnd,#bPlay,.pill[aria-pressed="true"],.chips button[aria-pressed="true"],.seg button[aria-pressed="true"],.kbd-row.act button.ok,.mac-h,.ld,.lt,details.src li .tag){
+  --neon:color-mix(in srgb,var(--mc) 78%,#fff);
+  background:transparent;color:#fff;border:2px solid var(--neon);box-shadow:0 0 3px var(--neon),0 0 10px color-mix(in srgb,var(--mc) 60%,transparent),inset 0 0 4px color-mix(in srgb,var(--mc) 40%,transparent);text-shadow:0 0 5px color-mix(in srgb,var(--mc) 60%,transparent)}
+:root[data-dark="1"] :is(#bTour,#bZen,#bMus,#bSnd)[aria-pressed="true"]{background:color-mix(in srgb,var(--mc) 22%,transparent);border-color:var(--mc);box-shadow:0 0 12px var(--mc),inset 0 0 8px var(--mc)}
+:root[data-dark="1"] .side button[aria-pressed="true"] span{background:transparent;color:#fff;box-shadow:0 0 6px var(--mc);border-color:var(--mc)}
+:root[data-dark="1"] .sw[aria-checked="true"]{background:color-mix(in srgb,var(--mc) 35%,transparent);box-shadow:0 0 8px var(--mc)}
+:root[data-dark="1"] details.box>summary .fold svg{background:transparent;color:var(--mc);box-shadow:0 0 7px var(--mc)}
+details.box{border:1px solid var(--line);border-radius:16px;padding:12px 16px;margin:18px 0;background:var(--surface)}
+details.box>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;font-weight:900;font-size:18px}
+details.box>summary::-webkit-details-marker{display:none}
+/* 展開／收起：右邊一顆圓形按鈕（向下箭頭＝展開，打開後轉成向上＝收起），旁邊寫字 */
+details.box>summary .fold{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:var(--m-ink)}
+details.box>summary .fold::before{content:"展開";color:var(--muted)}
+details.box[open]>summary .fold::before{content:"收起"}
+details.box>summary .fold svg{box-sizing:content-box;padding:5px;border-radius:50%;transition:transform .2s}
+details.box[open]>summary .fold svg{transform:rotate(180deg)}
+details.box>summary:hover .fold svg{filter:brightness(1.05) saturate(1.2)}
+details.box>summary small{font-weight:600;font-size:12px;color:var(--muted)}
+/* 更新紀錄：左邊日期、右邊逐條（每條前面「新增／改版／修正」標籤），日期之間虛線分隔 */
+.logs{margin-top:10px}
+.lday{display:grid;grid-template-columns:112px 1fr;gap:12px;padding:12px 0;border-top:1px dashed var(--line)}
+.lday:first-child{border-top:0}
+.ld{align-self:start;justify-self:start;font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;font-weight:700;font-size:13px;border-radius:8px;padding:1px 8px}
+.lday ul{list-style:none;margin:0;padding:0;display:grid;gap:7px}
+.lday li{display:flex;gap:8px;align-items:flex-start;font-size:14px;line-height:1.6}
+.lt{flex:none;font-size:12px;font-weight:800;border-radius:999px;padding:0 8px;line-height:20px;margin-top:2px}
+@media (max-width:560px){.lday{grid-template-columns:1fr;gap:6px}}
+/* 資料來源：每一項前面一個馬卡龍標籤 */
+details.src ul{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:8px}
+details.src li{display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:start;margin:0}
+details.src li .tag{display:inline-block;text-align:center;font-size:12px;font-weight:800;border-radius:8px;padding:1px 6px;line-height:1.5}
+/* 署名 */
+.sign{display:flex;align-items:center;justify-content:center;gap:8px;margin:18px 0 6px;font-size:13px;color:var(--muted);font-family:Sora,"Noto Sans TC",sans-serif;letter-spacing:.02em}
+.sign img{width:34px;height:34px;border-radius:50%;background:#fff;padding:2px;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+@media (max-width:560px){details.src li{grid-template-columns:1fr;gap:2px}details.src li .tag{justify-self:start}}
+
+/* 圖例 */
+.legend .lg-g{padding:12px 0;border-top:1px dashed var(--line)}
+.legend .lg-g:first-of-type{border-top:0}
+.lg-h{font-weight:800;font-size:14px;margin-bottom:8px}
+.lg-figs{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.lg-figs figure{margin:0;display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px}
+.lg-figs figcaption{display:flex;flex-direction:column;font-size:13px;line-height:1.35}
+.lg-figs figcaption small{color:var(--muted);font-size:12px}
+.lg-turb{grid-template-columns:repeat(auto-fill,minmax(88px,1fr))}
+.lg-cv{width:96px;height:96px}
+.lg-turb .lg-cv{width:72px;height:88px}
+.lg-bar{height:12px;border-radius:999px;max-width:420px}
+.lg-wind{background:linear-gradient(90deg,hsl(200,78%,55%),hsl(150,78%,52%),hsl(95,80%,52%),hsl(50,90%,55%),hsl(15,90%,58%))}
+.lg-farm{background:linear-gradient(90deg,hsl(195,95%,50%),hsl(140,95%,45%),hsl(90,95%,45%),hsl(45,95%,50%))}
+.lg-ends{display:flex;justify-content:space-between;max-width:420px;font-size:12px;color:var(--muted);margin-top:3px}
+.lg-note{display:flex;align-items:center;gap:8px;margin:6px 0 0;font-size:13px}
+.lg-dot{flex:none;width:16px;height:16px;border-radius:50%;background:hsl(140,95%,45%)}
+.lg-red{box-shadow:0 0 0 3px #ff3b3b}
+.lg-ring{flex:none;width:30px;height:16px;border-radius:50%;border:2px solid #ff5ad1;box-shadow:0 0 6px #ff5ad1}
+.lg-rainbow{border-color:transparent;background:linear-gradient(var(--surface),var(--surface)) padding-box,linear-gradient(90deg,#ff5a5a,#ffd23f,#4dff88,#3fa3ff,#c45cff) border-box;box-shadow:0 0 6px rgba(255,210,63,.6)}

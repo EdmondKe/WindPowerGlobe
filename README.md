@@ -5,7 +5,7 @@
 給小朋友看的全球風力發電療癒網站：風在地球上流動，世界各地四十多萬支真實位置的風車跟著轉。
 
 - 底圖：MapLibre GL JS 5.24 ＋ OpenFreeMap 向量圖磚（道路、建築、地名）＋ Mapterhorn 地形（陰影、立體地形）
-- 功能：模擬風場流線、颱風、風場面板與圖鑑、3D 風場任務（three.js，依地點換成台灣海峽／海上／北海／沙漠／草原／山區／雪地場景，三關：點亮村莊、對準風向、暴風來襲；地面用跟平面地圖一樣的底圖，附近有建築就蓋成立體房子）、風車點點樂（點風車彈 Do Re Mi、照順序連線練習數字和 ABC）、📍 GPS 打卡（手機走到風車 2 公里內打卡，那一區的風車變成七彩版，紀錄在貼紙簿；打卡紀錄只存在這台裝置的瀏覽器裡）、找找看、貼紙簿、背景音樂（一直循環播放）、風聲、環遊世界導覽、放空模式（依畫面所在的國家一區一區導覽：台灣是縣市、其他國家是有風機的省州，音樂隨機播放）、點風機看所在地區並唸出來、幫風機取名字（小鍵盤：數字、符號、英文字母；名字存在這台裝置的瀏覽器）、風線選單可以分別關掉風線和颱風
+- 功能：模擬風場流線、颱風、風場面板與圖鑑、3D 風場任務（three.js，依地點換成台灣海峽／海上／北海／沙漠／草原／山區／雪地場景，三關：點亮村莊、對準風向、暴風來襲；地面用跟平面地圖一樣的底圖，附近有建築就蓋成立體房子）、風車點點樂（點風車彈 Do Re Mi、照順序連線練習數字和 ABC）、📍 GPS 打卡（手機走到風車 2 公里內打卡，那一區的風車變成七彩版，紀錄在貼紙簿；打卡紀錄只存在這台裝置的瀏覽器裡）、找找看、貼紙簿、背景音樂（一直循環播放）、風聲、環遊世界導覽、放空模式（依畫面所在的國家一區一區導覽：台灣是縣市、其他國家是有風機的省州，音樂隨機播放）、點風機看所在地區並唸出來、幫風機取名字（小鍵盤：數字、符號、英文字母；名字存在這台裝置的瀏覽器）、風線選單可以分別關掉風線和颱風、「地圖」鈕的觀看設定（地圖風格：明／暗／衛星／地景，台灣電子地圖、地形平坦／立體、3D 建築、日夜光影）
 
 ## 檔案
 
@@ -147,6 +147,7 @@ GitHub Pages 會自動重新發布。
 - 地圖：© [OpenFreeMap](https://openfreemap.org/) © [OpenMapTiles](https://www.openmaptiles.org/)，資料 © [OpenStreetMap 貢獻者](https://www.openstreetmap.org/copyright)（ODbL 1.0）
 - 風機位置：© [OpenStreetMap 貢獻者](https://www.openstreetmap.org/copyright)（ODbL 1.0），經 Overpass API 取得。`data/turbines.bin.gz` 是由 OSM 資料衍生的資料庫，同樣適用 ODbL。
 - 地形：© [Mapterhorn](https://mapterhorn.com/attribution)
+- 衛星圖：[Sentinel-2 cloudless](https://s2maps.eu) by EOX IT Services GmbH（Contains modified Copernicus Sentinel data 2023，CC BY-NC-SA 4.0，非商業使用）；台灣放大後用內政部國土測繪中心正射影像
 - 國界：[Natural Earth](https://www.naturalearthdata.com/)（公有領域）
 - 台灣縣市界：[內政部國土測繪中心](https://whgis-nlsc.moi.gov.tw/)，依[政府資料開放授權條款－第 1 版](https://data.gov.tw/license)
 - 颱風路徑：[GDACS](https://www.gdacs.org/)（聯合國與歐盟全球災害警報系統，路徑資料來自美國 JTWC／NHC），GitHub Actions 每 6 小時更新；分級依交通部中央氣象署標準

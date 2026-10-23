@@ -14,12 +14,17 @@ const STYLE_URL={light:'https://tiles.openfreemap.org/styles/liberty',dark:'http
 const DEM_TILES=['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'];
 const THEMES=['auto','dark','light'], THEME_LBL={auto:'自動',dark:'深色',light:'淺色'};
 // 台灣範圍可疊上內政部國土測繪中心的 WMTS 圖磚（政府資料開放授權條款－第 1 版），其他地方照樣用 OpenFreeMap
-const BASES=['vector','emap','photo'], BASE_LBL={vector:'向量',emap:'電子地圖',photo:'空照'};
 const NLSC={emap:{layer:'EMAP',fmt:'jpeg',name:'臺灣通用電子地圖'},photo:{layer:'PHOTO2',fmt:'jpeg',name:'正射影像'}};
-let base='vector'; try{ const b=localStorage.getItem('windglobe-base'); if(BASES.includes(b)) base=b; }catch(e){}
+// 地圖風格：auto＝跟著畫面亮暗（明／暗）、sat＝衛星（全世界 Sentinel-2，台灣換成內政部正射影像）、land＝地景（森林、農田、草地上色＋咖啡色 3D 建築）
+// 衛星搭深色畫面、地景搭淺色畫面，地圖上的風線、風車顏色才看得清楚
+const S2_TILES=['https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2023_3857/default/g/{z}/{y}/{x}.jpg'];
+let mapStyle='auto'; try{ const m=localStorage.getItem('windglobe-mapstyle'); if(['auto','sat','land'].includes(m)) mapStyle=m; }catch(e){}
+let twEmap=false; try{ twEmap=localStorage.getItem('windglobe-base')==='emap'; }catch(e){}
+S.bld=true; try{ if(localStorage.getItem('windglobe-bld')==='0') S.bld=false; }catch(e){}
 let theme='auto'; try{theme=localStorage.getItem('windglobe-theme')||'auto';}catch(e){}
 const darkMQ=matchMedia('(prefers-color-scheme: dark)');
-const isDark=()=>theme==='dark'||(theme==='auto'&&darkMQ.matches);
+const effTheme=()=>mapStyle==='sat'?'dark':mapStyle==='land'?'light':theme;
+const isDark=()=>effTheme()==='dark'||(effTheme()==='auto'&&darkMQ.matches);
 let styleKey=isDark()?'dark':'light';
 const map=new maplibregl.Map({
   container:'gl', style:STYLE_URL[styleKey], center:[121,23.5], zoom:1.3, minZoom:0, maxZoom:17.5, maxPitch:60,
@@ -284,8 +289,14 @@ function onStyle(){
   map.addLayer({id:'hillshade',type:'hillshade',source:'dem-hs',minzoom:4,paint:{
     'hillshade-exaggeration':['interpolate',['linear'],['zoom'],4,0.15,9,0.35,13,0.25],
     'hillshade-shadow-color':dark?'#000814':'#56634f','hillshade-highlight-color':dark?'#2c4a66':'#ffffff','hillshade-accent-color':dark?'#06131f':'#6f7a5c'}},below);
-  if(!layers.some(l=>l.type==='fill-extrusion')) map.addLayer({id:'building-3d',type:'fill-extrusion',source:'openmaptiles','source-layer':'building',minzoom:14,paint:{
-    'fill-extrusion-color':dark?'#5b6b8c':'#e8dccb','fill-extrusion-height':['get','render_height'],'fill-extrusion-base':['get','render_min_height'],'fill-extrusion-opacity':0.85}},firstSym);
+  // 3D 建築一律用自己的圖層：暗色＝半透明藍色全像（越高越亮）、明＝米白、地景＝咖啡色；zoom 13～14 慢慢浮現
+  for(const l of layers) if(l.type==='fill-extrusion') map.removeLayer(l.id);
+  const holo=dark, fade=v=>['interpolate',['linear'],['zoom'],13,0,14.2,v];
+  map.addLayer({id:'building-3d',type:'fill-extrusion',source:'openmaptiles','source-layer':'building',minzoom:13,layout:{visibility:S.bld?'visible':'none'},paint:{
+    'fill-extrusion-color':holo?['interpolate',['linear'],['coalesce',['get','render_height'],5],0,'#1b3a6b',25,'#2f6fd6',80,'#58b4ff',200,'#b6ecff']:mapStyle==='land'?'#9c6f4b':'#e8dccb',
+    'fill-extrusion-height':['get','render_height'],'fill-extrusion-base':['get','render_min_height'],
+    'fill-extrusion-opacity':fade(holo?0.55:mapStyle==='land'?0.92:0.85),'fill-extrusion-vertical-gradient':true}},firstSym);
+  styleExtras(layers);
   map.addSource('night',{type:'geojson',data:nightGeo(0)});
   map.addSource('night2',{type:'geojson',data:nightGeo(-8)});
   for(const id of ['night','night2']) map.addLayer({id,type:'fill',source:id,paint:{'fill-color':dark?'#000410':'#101e40','fill-opacity':dark?0.42:0.16,'fill-antialias':false}},firstSym);
@@ -312,11 +323,30 @@ function applyTilt(move){
   terrOn=null; autoTerrain();
   if(move) map.easeTo(S.tilt?{pitch:kmPx>=0.3?55:kmPx>=0.05?35:0,duration:900}:{pitch:0,bearing:0,duration:900});
 }
+// 衛星：最底下鋪 Sentinel-2 衛星圖，把陸地、水、綠地色塊藏起來，只留道路和地名；地景：森林、農田、草地重新上色，地形陰影加深
+const LAND_COL=['match',['get','class'],['wood','forest'],'#8fbf7a',['grass','scrub'],'#c3dd9f',['farmland'],'#e8dcae',['wetland'],'#a9d6c4',['sand','beach'],'#efdfb0',['ice','glacier'],'#f2f7fb',['rock','bare_rock'],'#d8d1c3','#cfe2b4'];
+function styleExtras(layers){
+  const bg=layers.find(l=>l.type==='background');
+  if(mapStyle==='sat'){
+    map.addSource('s2',{type:'raster',tiles:S2_TILES,tileSize:256,maxzoom:14,
+      attribution:'<a href="https://s2maps.eu" target="_blank">Sentinel-2 cloudless – s2maps.eu by EOX IT Services GmbH</a>（Contains modified Copernicus Sentinel data 2023）'});
+    for(const l of layers) if(l.type==='fill'&&map.getLayer(l.id)) map.setLayoutProperty(l.id,'visibility','none');
+    const after=layers.find(l=>l.type!=='background'&&map.getLayer(l.id));
+    map.addLayer({id:'s2',type:'raster',source:'s2',paint:{'raster-fade-duration':200}},after&&after.id);
+    if(bg) map.setPaintProperty(bg.id,'background-color','#0b1a12');
+  }else if(mapStyle==='land'){
+    for(const l of layers){ if(l.type!=='fill'||!map.getLayer(l.id)) continue;
+      if(l['source-layer']==='landcover'){ map.setPaintProperty(l.id,'fill-color',LAND_COL); map.setPaintProperty(l.id,'fill-opacity',0.85); }
+      else if(l['source-layer']==='park') map.setPaintProperty(l.id,'fill-color','#b7d79a'); }
+    if(bg) map.setPaintProperty(bg.id,'background-color','#f2ecdd');
+    if(map.getLayer('hillshade')) map.setPaintProperty('hillshade','hillshade-exaggeration',['interpolate',['linear'],['zoom'],4,0.3,9,0.55,13,0.4]);
+  }
+}
 function applyBase(){
   if(!styleReady) return;
   if(map.getLayer('tw-base')) map.removeLayer('tw-base');
   if(map.getSource('tw-base')) map.removeSource('tw-base');
-  $('#baseLbl').textContent=BASE_LBL[base]; $('#bBase').setAttribute('aria-pressed',base!=='vector');
+  const base=mapStyle==='sat'?'photo':twEmap?'emap':'vector';
   const B=NLSC[base]; if(!B) return;
   map.addSource('tw-base',{type:'raster',tileSize:256,minzoom:7,maxzoom:18,bounds:[116.2,20.4,123.6,26.8],
     tiles:[`https://wmts.nlsc.gov.tw/wmts/${B.layer}/default/GoogleMapsCompatible/{z}/{y}/{x}`],
@@ -1029,26 +1059,61 @@ function setWind(on){ S.wind=on; clearTrails(); updWindMenu(); }
 $('#bWind').onclick=e=>{ e.stopPropagation(); updWindMenu(); wmenu.hidden=!wmenu.hidden; };
 $('#wmWind').onclick=()=>setWind(!S.wind);
 $('#wmTy').onclick=()=>{ S.ty=!S.ty; try{localStorage.setItem('windglobe-ty',S.ty?'1':'0');}catch(e){} updWindMenu(); };
-document.addEventListener('click',e=>{ if(!wmenu.hidden&&!wmenu.contains(e.target)&&!e.target.closest('#bWind')) wmenu.hidden=true; });
+document.addEventListener('click',e=>{ if(e.isTrusted&&!wmenu.hidden&&!wmenu.contains(e.target)&&!e.target.closest('#bWind')) wmenu.hidden=true; });
 updWindMenu();
 toggleBtn('#bNight','night',()=>{lastNightT=0;lastNightR=0;updNight();applyNightVis();});
-toggleBtn('#bLabel','labels',()=>applyLabelVis());
-toggleBtn('#bBig','big',()=>{$('#bigLbl').textContent=S.big?'放大':'等比例';});
+toggleBtn('#bLabel','labels',()=>{ applyLabelVis(); if(typeof updShowMenu==='function') updShowMenu(); });
+toggleBtn('#bBig','big',()=>{$('#bigLbl').textContent=S.big?'放大':'等比例'; if(typeof updShowMenu==='function') updShowMenu();});
 toggleBtn('#bTilt','tilt',()=>{$('#tiltLbl').textContent=S.tilt?'立體':'平坦';applyTilt(true);});
 $('#bView').onclick=()=>{
   S.mode=S.mode==='3d'?'2d':'3d'; $('#viewLbl').textContent=S.mode==='3d'?'地球':'平面'; $('#bView').setAttribute('aria-pressed',S.mode==='3d');
   if(styleReady) map.setProjection({type:S.mode==='3d'?'globe':'mercator'});
   clearTrails(); setTimeout(()=>{applyView();initParticles();vv++;},50);
 };
-function applyTheme(){
-  if(theme==='auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme',theme);
+function applyTheme(force=false){
+  const et=effTheme(); if(et==='auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme',et);
   $('#themeLbl').textContent=THEME_LBL[theme]; readColors(); clearTrails();
   const k=isDark()?'dark':'light'; document.documentElement.setAttribute('data-dark',k==='dark'?'1':'0');
-  if(k!==styleKey){ styleKey=k; styleReady=false; map.setStyle(STYLE_URL[k]); }
+  if(k!==styleKey||force){ styleKey=k; styleReady=false; map.setStyle(STYLE_URL[k]); }
+  updMset();
 }
-$('#bBase').onclick=()=>{ base=BASES[(BASES.indexOf(base)+1)%BASES.length]; try{localStorage.setItem('windglobe-base',base);}catch(e){} applyBase();
-  if(base!=='vector'&&(kmPx<0.1||Math.abs(cLon-120.9)>4||Math.abs(cLat-23.7)>4)) toast(`${BASE_LBL[base]}只有台灣範圍，放大到台灣就看得到`); };
-$('#bTheme').onclick=()=>{theme=THEMES[(THEMES.indexOf(theme)+1)%3];try{localStorage.setItem('windglobe-theme',theme);}catch(e){}applyTheme();};
+/* ---------- 觀看設定面板（地圖鈕）：地圖風格、台灣電子地圖、地形、3D 建築、日夜光影 ---------- */
+const mset=$('#mset');
+const curStyle=()=>mapStyle==='auto'?(isDark()?'dark':'light'):mapStyle;
+function updMset(){
+  const cs=curStyle(); $('#mapLbl').textContent={light:'明',dark:'暗',sat:'衛星',land:'地景'}[cs];
+  for(const b of $('#msStyle').children) b.setAttribute('aria-pressed',b.dataset.v===cs);
+  for(const b of $('#msTilt').children) b.setAttribute('aria-pressed',(b.dataset.v==='1')===S.tilt);
+  const sw=(id,on,dis)=>{ const b=$(id); b.setAttribute('aria-checked',on); b.disabled=!!dis; };
+  sw('#msEmap',twEmap&&mapStyle!=='sat',mapStyle==='sat'); sw('#msBld',S.bld); sw('#msNight',S.night);
+  sw('#msAuto',mapStyle==='auto'&&theme==='auto',mapStyle!=='auto');
+}
+function closeMset(){ mset.hidden=true; $('#bMapSet').setAttribute('aria-pressed',false); }
+$('#bMapSet').onclick=e=>{ e.stopPropagation(); updMset(); mset.hidden=!mset.hidden; $('#bMapSet').setAttribute('aria-pressed',!mset.hidden); };
+$('#msClose').onclick=closeMset;
+document.addEventListener('click',e=>{ if(e.isTrusted&&!mset.hidden&&!mset.contains(e.target)&&!e.target.closest('#bMapSet')) closeMset(); });
+$('#msStyle').onclick=e=>{ const v=e.target.closest('button')?.dataset.v; if(!v) return;
+  const was=mapStyle;
+  if(v==='light'||v==='dark'){ mapStyle='auto'; theme=v; try{localStorage.setItem('windglobe-theme',theme);}catch(err){} } else mapStyle=v;
+  try{localStorage.setItem('windglobe-mapstyle',mapStyle);}catch(err){}
+  applyTheme(was!==mapStyle); // 換衛星、地景（或換回來）要重新載入地圖樣式
+  if(v==='sat'&&was!=='sat') toast('衛星圖：全世界用 Sentinel-2（約 10 公尺解析度），台灣放大後換成內政部高解析正射影像',4000); };
+$('#msEmap').onclick=()=>{ twEmap=!twEmap; try{localStorage.setItem('windglobe-base',twEmap?'emap':'vector');}catch(e){} applyBase(); updMset();
+  if(twEmap&&(kmPx<0.1||Math.abs(cLon-120.9)>4||Math.abs(cLat-23.7)>4)) toast('電子地圖只有台灣範圍，放大到台灣就看得到'); };
+$('#msTilt').onclick=e=>{ const v=e.target.closest('button')?.dataset.v; if(v&&(v==='1')!==S.tilt){ $('#bTilt').click(); updMset(); } };
+$('#msBld').onclick=()=>{ S.bld=!S.bld; try{localStorage.setItem('windglobe-bld',S.bld?'1':'0');}catch(e){} if(map.getLayer('building-3d')) map.setLayoutProperty('building-3d','visibility',S.bld?'visible':'none'); updMset(); };
+$('#msNight').onclick=()=>{ $('#bNight').click(); updMset(); };
+$('#msAuto').onclick=()=>{ if(mapStyle!=='auto') return; theme=theme==='auto'?(isDark()?'dark':'light'):'auto'; try{localStorage.setItem('windglobe-theme',theme);}catch(e){} applyTheme(); };
+// 標示鈕：風場名稱、風機圖示大小兩個開關放在同一個小選單
+const lmenu=$('#lmenu');
+function updShowMenu(){ $('#lmLabel').setAttribute('aria-pressed',S.labels); $('#lmBig').setAttribute('aria-pressed',S.big); $('#bShow').setAttribute('aria-pressed',S.labels||S.big); }
+$('#bShow').onclick=e=>{ e.stopPropagation(); updShowMenu(); lmenu.hidden=!lmenu.hidden; };
+$('#lmLabel').onclick=()=>{ $('#bLabel').click(); updShowMenu(); };
+$('#lmBig').onclick=()=>{ $('#bBig').click(); updShowMenu(); };
+document.addEventListener('click',e=>{ if(e.isTrusted&&!lmenu.hidden&&!lmenu.contains(e.target)&&!e.target.closest('#bShow')) lmenu.hidden=true; });
+updShowMenu();
+$('#bTheme').onclick=()=>{ const f=mapStyle!=='auto'; if(f){ mapStyle='auto'; try{localStorage.setItem('windglobe-mapstyle','auto');}catch(e){} } // 衛星、地景時按畫面鈕，先回到明／暗
+  theme=THEMES[(THEMES.indexOf(theme)+1)%3];try{localStorage.setItem('windglobe-theme',theme);}catch(e){}applyTheme(f);};
 darkMQ.addEventListener('change',()=>applyTheme());
 
 function setTour(on){
@@ -2243,6 +2308,21 @@ map.jumpTo({zoom:zoomForZ(1,cLat)}); applyView();
 setSpeed(2);
 appReady=true;
 loadWind();
+
+/* ---------- 圖例：颱風四種分級、風機造型，用地圖上同一套畫法畫（打開圖例時才會動） ---------- */
+const LG_TB={t0:{kind:0,era:2},t1:{kind:0,era:2,green:true},t2:{kind:0,era:3,red:true},t3:{kind:0,era:4,off:true},t4:{kind:2,era:1},t5:{kind:2,era:1,helix:true},t6:{kind:3,era:0},t7:{kind:0,era:2}};
+const legendEl=$('#legend');
+function drawLegend(now){
+  const col=C.dark?'#f2f7fb':'#1b3446';
+  for(const cv of legendEl.querySelectorAll('canvas.lg-cv')){
+    const d=Math.min(2,devicePixelRatio||1), w=cv.clientWidth||+cv.width, h=cv.clientHeight||+cv.height;
+    if(cv.width!==Math.round(w*d)){ cv.width=Math.round(w*d); cv.height=Math.round(h*d); }
+    const g=cv.getContext('2d'); g.setTransform(d,0,0,d,0,0); g.clearRect(0,0,w,h);
+    if(cv.dataset.ty!=null){ const c=+cv.dataset.ty; drawCuteTyphoon(g,w/2,h/2,w*0.26,-now*0.002*(0.6+0.35*c),now+c*900,c); }
+    else{ const k=cv.dataset.tb; drawTurbineTrue(g,w/2,h-8,h*0.62,h*0.34,now*0.004,col,1,LG_TB[k],k==='t7'); }
+  }
+}
+(function lgLoop(now){ if(legendEl.open&&!document.hidden) drawLegend(now); requestAnimationFrame(lgLoop); })(performance.now());
 window.windGlobe={windAt,TYS,TYPHOONS,get WG(){return WG;},drawTurbineTrue,doCheckIn,CHECKS,DOT,frameBody,PL,setMusic,map,S,FARMS,select,flyTo,open3D,specForFarm,startFind,drawFarms,stepParticles,applyView,updViewBox,bump:()=>vv++}; // 方便在瀏覽器主控台除錯
 if(styleReady) onStyle();
 requestAnimationFrame(frame);
