@@ -1,4 +1,6 @@
-# 風車地球
+# 風車地球 WindPowerGlobe
+
+網址：https://windpowerglobe.com
 
 給小朋友看的全球風力發電療癒網站：風在地球上流動，世界各地四十多萬支真實位置的風車跟著轉。
 
@@ -109,21 +111,21 @@ iPhone、iPad（Safari 16.4 以上）與 Android 都能用。iPhone 的 Safari �
 
 ## 發布到 GitHub Pages
 
-1. 到 https://github.com/new 建立新的 repo，例如取名 `wind-globe`，選 **Public**，其他選項都不要勾（不要加 README），按 **Create repository**。
+1. 到 https://github.com/new 建立新的 repo，例如取名 `WindPowerGlobe`，選 **Public**，其他選項都不要勾（不要加 README），按 **Create repository**。
 2. 在這個資料夾打開終端機，依序執行（把 `你的帳號` 換成你的 GitHub 帳號）：
 
    ```bash
    git init -b main
    git add .
    git commit -m "風車地球第一版"
-   git remote add origin https://github.com/你的帳號/wind-globe.git
+   git remote add origin https://github.com/你的帳號/WindPowerGlobe.git
    git push -u origin main
    ```
 
    第一次推送時會跳出 GitHub 登入視窗，登入即可。
 3. 回到 GitHub 的 repo 頁面 → **Settings** → 左邊 **Pages** → **Build and deployment** 的 Source 選 **GitHub Actions**。
    之後每次 push、以及每 6 小時，`.github/workflows/pages.yml` 會自動下載最新風場並發布網站；進度可以在 repo 的 **Actions** 分頁看到，也可以在那裡按 **Run workflow** 手動更新。
-4. 等一兩分鐘，網址會出現在同一頁上方：`https://你的帳號.github.io/wind-globe/`
+4. 等一兩分鐘，網址會出現在同一頁上方：`https://你的帳號.github.io/WindPowerGlobe/`
 
 之後修改檔案，只要再執行：
 
@@ -137,7 +139,7 @@ GitHub Pages 會自動重新發布。
 
 ## 也發布到 Cloudflare Pages
 
-同一份網站也會發布到 Cloudflare Pages（`https://wind-globe.pages.dev`，名字被用走時 Cloudflare 會自動加字尾，實際網址看 Cloudflare 後台的 Workers & Pages）。
+同一份網站也會發布到 Cloudflare Pages 的 `windpowerglobe` 專案（`https://windpowerglobe.pages.dev`），網域 `windpowerglobe.com` 在 Cloudflare 購買並接在這個專案上（專案的「自訂網域」）。
 需要在 repo 的 **Settings → Secrets and variables → Actions** 設定 `CLOUDFLARE_API_TOKEN`（權限只要「Cloudflare Pages：編輯」）和 `CLOUDFLARE_ACCOUNT_ID`；沒設定的話這一步會自動跳過，只發布到 GitHub Pages。
 
 ## 資料來源與授權

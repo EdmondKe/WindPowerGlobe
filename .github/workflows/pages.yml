@@ -56,7 +56,7 @@ jobs:
         with:
           path: .
 
-      # 同一份網站也發布到 Cloudflare Pages（https://wind-globe.pages.dev）。
+      # 同一份網站也發布到 Cloudflare Pages（https://windpowerglobe.pages.dev，網域 https://windpowerglobe.com 接在這裡）。
       # 要先在 repo 的 Settings → Secrets and variables → Actions 加上 CLOUDFLARE_API_TOKEN 和 CLOUDFLARE_ACCOUNT_ID，沒設定就跳過。
       - name: 整理要發布到 Cloudflare 的檔案
         if: env.CF_TOKEN != ''
@@ -72,7 +72,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages project create wind-globe --production-branch=main
+          command: pages project create windpowerglobe --production-branch=main
 
       - name: 發布到 Cloudflare Pages
         if: env.CF_TOKEN != ''
@@ -80,7 +80,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy _cf --project-name=wind-globe --branch=main --commit-dirty=true
+          command: pages deploy _cf --project-name=windpowerglobe --branch=main --commit-dirty=true
 
   deploy:
     needs: build
