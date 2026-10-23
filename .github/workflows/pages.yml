@@ -62,7 +62,7 @@ jobs:
         if: env.CF_TOKEN != ''
         run: |
           mkdir _cf
-          cp -r index.html manifest.webmanifest assets data Music _cf/
+          cp -r index.html manifest.webmanifest robots.txt sitemap.xml assets data Music _cf/
           if [ -d voice ]; then cp -r voice _cf/; fi
 
       - name: 建立 Cloudflare Pages 專案（只有第一次需要，已經有了會略過）
