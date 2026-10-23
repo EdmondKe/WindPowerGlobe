@@ -82,6 +82,16 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy _cf --project-name=windpowerglobe --branch=main --commit-dirty=true
 
+      # 舊網址 wind-globe.pages.dev 自動轉到 windpowerglobe.com（舊專案只放轉址設定）
+      - name: 舊網址轉到新網址
+        if: env.CF_TOKEN != ''
+        uses: cloudflare/wrangler-action@v4
+        continue-on-error: true
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy tools/redirect-old --project-name=wind-globe --branch=main --commit-dirty=true
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
