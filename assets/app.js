@@ -7,14 +7,14 @@ const rnd = mulberry32(20261021);
 
 const S = {simT:Date.now(), playing:true, speeds:[1,10,60,300,1800,3600], speedIdx:2, mode:'3d', tilt:true,
   wind:true, night:true, labels:true, big:true, sel:null, tour:false, tourIdx:0, tourNext:0, zen:false, sound:false};
-const SPD_LBL = ['1×','10×','60×','300×','30 分/秒','1 時/秒'];
+const SPD_LBL = ['1×','10×','60×','300×',tr('30 分/秒'),tr('1 時/秒')];
 
 /* ---------- 底圖（MapLibre + OpenFreeMap） ---------- */
 const STYLE_URL={light:'https://tiles.openfreemap.org/styles/liberty',dark:'https://tiles.openfreemap.org/styles/fiord'};
 const DEM_TILES=['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'];
-const THEMES=['auto','dark','light'], THEME_LBL={auto:'自動',dark:'深色',light:'淺色'};
+const THEMES=['auto','dark','light'], THEME_LBL={auto:tr('自動'),dark:tr('深色'),light:tr('淺色')};
 // 台灣範圍可疊上內政部國土測繪中心的 WMTS 圖磚（政府資料開放授權條款－第 1 版），其他地方照樣用 OpenFreeMap
-const NLSC={emap:{layer:'EMAP',fmt:'jpeg',name:'臺灣通用電子地圖'},photo:{layer:'PHOTO2',fmt:'jpeg',name:'正射影像'}};
+const NLSC={emap:{layer:'EMAP',fmt:'jpeg',name:tr('臺灣通用電子地圖')},photo:{layer:'PHOTO2',fmt:'jpeg',name:tr('正射影像')}};
 // 地圖風格：auto＝跟著畫面亮暗（明／暗）、sat＝衛星（全世界 Sentinel-2，台灣換成內政部正射影像）、land＝地景（森林、農田、草地上色＋咖啡色 3D 建築）
 // 衛星搭深色畫面、地景搭淺色畫面，地圖上的風線、風車顏色才看得清楚
 const S2_TILES=['https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2023_3857/default/g/{z}/{y}/{x}.jpg'];
@@ -26,12 +26,23 @@ const darkMQ=matchMedia('(prefers-color-scheme: dark)');
 const effTheme=()=>mapStyle==='sat'?'dark':mapStyle==='land'?'light':theme;
 const isDark=()=>effTheme()==='dark'||(effTheme()==='auto'&&darkMQ.matches);
 let styleKey=isDark()?'dark':'light';
+/* ---------- 語言選單（標題右邊）：換語言會重新載入網頁 ---------- */
+{ const sel=document.getElementById('langSel');
+  for(const [k,n] of I18N.LANGS){ const o=document.createElement('option'); o.value=k; o.textContent=n; if(k===I18N.LANG) o.selected=true; sel.append(o); }
+  sel.onchange=()=>I18N.setLang(sel.value); }
+/* ---------- 畫質：依每秒畫面張數自動調高調低（觀看設定裡也可以固定成高、中、低） ---------- */
+// 等級 2 高、1 中、0 低：影響地圖解析度、風線數量、3D 的解析度與房子樹木數量
+const QUAL={mode:'auto',lvl:2,acc:0,n:0,good:0,fps:0,fail:[0,0,0]};
+try{ const m=localStorage.getItem('windglobe-quality'); if(m==='0'||m==='1'||m==='2') QUAL.mode=m; }catch(e){}
+// 第一次先猜：處理器核心少或記憶體小的裝置先用中畫質，之後再看實際順不順
+QUAL.lvl=QUAL.mode!=='auto'?+QUAL.mode:((navigator.hardwareConcurrency||8)<=4||(navigator.deviceMemory||8)<=4)?1:2;
+const qPR=()=>Math.min(window.devicePixelRatio||1,[1,1.5,2][QUAL.lvl]);
 const map=new maplibregl.Map({
-  container:'gl', style:STYLE_URL[styleKey], center:[121,23.5], zoom:1.3, minZoom:0, maxZoom:17.5, maxPitch:60,
+  container:'gl', pixelRatio:qPR(), style:STYLE_URL[styleKey], center:[121,23.5], zoom:1.3, minZoom:0, maxZoom:17.5, maxPitch:60,
   keyboard:false, attributionControl:false, fadeDuration:150,
-  localIdeographFontFamily:'"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif'
+  localIdeographFontFamily:{ja:'"Hiragino Sans","Yu Gothic","Meiryo",sans-serif',ko:'"Apple SD Gothic Neo","Malgun Gothic",sans-serif','zh-Hans':'"PingFang SC","Microsoft YaHei",sans-serif'}[I18N.LANG]||'"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif'
 });
-map.addControl(new maplibregl.AttributionControl({compact:true,customAttribution:'風機位置 © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap 貢獻者</a>・<a href="https://www.naturalearthdata.com/" target="_blank">Natural Earth</a>・內政部國土測繪中心・風是程式模擬的'}),'bottom-right');
+map.addControl(new maplibregl.AttributionControl({compact:true,customAttribution:tr('風機位置 © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap 貢獻者</a>・<a href="https://www.naturalearthdata.com/" target="_blank">Natural Earth</a>・內政部國土測繪中心・風是程式模擬的')}),'bottom-right');
 map.addControl(new maplibregl.NavigationControl({visualizePitch:true}),'bottom-left');
 map.addControl(new maplibregl.ScaleControl({maxWidth:120,unit:'metric'}),'bottom-left');
 let styleReady=false, appReady=false;
@@ -44,7 +55,7 @@ async function getTurbines(u,o={cache:'no-cache'}){
   const r=await fetch(u,o); if(!r.ok) throw new Error(u+'（'+r.status+'）');
   let ab=await r.arrayBuffer(); const h=new Uint8Array(ab,0,2);
   if(h[0]===0x1f&&h[1]===0x8b){ // 伺服器沒有自動解壓縮時，用瀏覽器內建的 gzip 解壓
-    if(!('DecompressionStream' in window)) throw new Error('瀏覽器版本太舊，無法解開風機資料');
+    if(!('DecompressionStream' in window)) throw new Error(tr('瀏覽器版本太舊，無法解開風機資料'));
     ab=await new Response(new Blob([ab]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
   }
   return ab;
@@ -58,10 +69,12 @@ const [FD, TWA, TOPO50, TWTOPO, TYD, WMETA, PLD, WBUF] = await Promise.all([
 /* ---------- 風場資料（約略值，data/farms.json） ---------- */
 // k: on 陸上 / off 離岸 / float 浮動式 ; st: ret 已退役, build 建置中或分期
 const FARMS = FD.farms;
+// 其他語言：風場名稱、地點、說明換成翻譯；原文留在 n0（音樂區名稱用原文對照），ns 是去掉括號說明的短名稱
+FARMS.forEach(f=>{ f.n0=f.n; f.ns=trName(f.n.replace(/（.*?）/,'')); f.n=trName(f.n); f.c=trName(f.c); if(f.note) f.note=trName(f.note); if(f.layout&&f.layout.unit) f.layout.unit=trName(f.layout.unit); });
 const TOUR = FD.tour;
 FARMS.forEach(f=>{f.ph=rnd()*TAU;f.ang=rnd()*TAU;f.pulse=rnd();f.ws=0;f.frac=0;f.rpm=0;f.px=null;});
 const byId = Object.fromEntries(FARMS.map(f=>[f.id,f]));
-const kindName = {on:'陸上',off:'離岸',float:'浮動式'};
+const kindName = {on:tr('陸上'),off:tr('離岸'),float:tr('浮動式')};
 /* 台灣風場：機型、葉輪直徑 D(m)、輪轂高 hh(m, 約略)、間距 sp(km)、排列方位 hd(度, 由北順時針) */
 const TWLAY=Object.fromEntries(FARMS.filter(f=>f.layout).map(f=>[f.id,f.layout]));
 function buildLayout(f){
@@ -83,7 +96,7 @@ const DCL=[0,50,77,90,130,154,167,174,222];
 // 格式說明見 tools/build_turbines.py
 function decodeTurbines(ab){
   const dv=new DataView(ab);
-  if(dv.getUint32(0,true)!==0x31425457||dv.getUint32(4,true)!==1) throw new Error('風機資料格式不符');
+  if(dv.getUint32(0,true)!==0x31425457||dv.getUint32(4,true)!==1) throw new Error(tr('風機資料格式不符'));
   const n=dv.getUint32(8,true), nc=dv.getUint32(12,true), na=dv.getUint32(16,true);
   let o=20; const cells=[], agg=[];
   for(let i=0;i<nc;i++,o+=12) cells.push({cx:dv.getInt16(o,true)+0.5,cy:dv.getInt16(o+2,true)+0.5,start:dv.getUint32(o+4,true),n:dv.getUint32(o+8,true),ang:rnd()*TAU,frac:0,rpm:0});
@@ -256,7 +269,7 @@ function unprojFlat(x,y){ PT.x=x; PT.y=y; const l=map.transform.screenPointToLoc
 function unproj(x,y){ const l=map.unproject([x,y]); let lon=l.lng; if(lon>180||lon<-180) lon=((lon+540)%360)-180; return [lon,l.lat]; }
 function resize(){
   const r=mapEl.getBoundingClientRect();
-  W=Math.max(200,r.width); H=Math.max(200,r.height); DPR=Math.min(2,window.devicePixelRatio||1);
+  W=Math.max(200,r.width); H=Math.max(200,r.height); DPR=qPR();
   // 風線畫布每幀都要整張淡出，用 1 倍解析度就好（細線本來就柔和，看不出差別）
   const sz=(c,d)=>{c.width=Math.round(W*d);c.height=Math.round(H*d);c.style.width=W+'px';c.style.height=H+'px';};
   sz(cTrail,1); sz(cFx,DPR); gTrail.setTransform(1,0,0,1,0,0); gFx.setTransform(DPR,0,0,DPR,0,0);
@@ -266,11 +279,8 @@ function resize(){
 function zoomForKm(k,lat){ return map.getZoom()+Math.log2(k/kmPx)+Math.log2(Math.max(0.02,Math.cos(lat*D2R))/Math.max(0.02,Math.cos(cLat*D2R))); }
 function zoomForZ(z,lat){ return zoomForKm(z*Math.min(W,H)*0.44/6371,lat); }
 /* ---------- 底圖加工：中文地名、地形陰影、立體地形、晝夜 ---------- */
-// 優先用繁體中文名；name:zh 有時寫成「简;繁」或「繁/简」，各取繁體那一半
-const ZH_NAME=['coalesce',['get','name:zh-Hant'],['case',['has','name:zh'],['let','z',['get','name:zh'],['case',
-  ['>=',['index-of',';',['var','z']],0],['slice',['var','z'],['+',['index-of',';',['var','z']],1]],
-  ['>=',['index-of','/',['var','z']],0],['slice',['var','z'],0,['index-of','/',['var','z']]],
-  ['var','z']]],['get','name']]];
+// 地名用介面語言（assets/i18n.js）：中文優先用繁體／簡體名，其他語言用該語言的名字，沒有就用當地名字
+const ZH_NAME=I18N.nameExpr();
 let placeLayers=[];
 function onStyle(){
   const dark=styleKey==='dark', layers=map.getStyle().layers;
@@ -350,13 +360,13 @@ function applyBase(){
   const B=NLSC[base]; if(!B) return;
   map.addSource('tw-base',{type:'raster',tileSize:256,minzoom:7,maxzoom:18,bounds:[116.2,20.4,123.6,26.8],
     tiles:[`https://wmts.nlsc.gov.tw/wmts/${B.layer}/default/GoogleMapsCompatible/{z}/{y}/{x}`],
-    attribution:`<a href="https://maps.nlsc.gov.tw/" target="_blank">內政部國土測繪中心 ${B.name}</a>`});
+    attribution:`<a href="https://maps.nlsc.gov.tw/" target="_blank">${tr('內政部國土測繪中心')} ${B.name}</a>`});
   // 電子地圖本身有文字，蓋在所有底圖圖層上面；空照沒有文字，放在 3D 建築與地名下面
   const layers=map.getStyle().layers, before=base==='emap'?'night':(layers.find(l=>l.type==='fill-extrusion')||layers.find(l=>l.type==='symbol')||{}).id;
   map.addLayer({id:'tw-base',type:'raster',source:'tw-base',minzoom:7,paint:{'raster-fade-duration':200,'raster-opacity':['interpolate',['linear'],['zoom'],7,0,8,1]}},map.getLayer(before)?before:undefined);
 }
 function applyNightVis(){ if(!map.getLayer('night')) return; for(const id of ['night','night2']) map.setLayoutProperty(id,'visibility',S.night?'visible':'none'); }
-function applyLabelVis(){ const v=S.labels&&!G.on?'visible':'none'; for(const id of placeLayers) if(map.getLayer(id)) map.setLayoutProperty(id,'visibility',v); }
+function applyLabelVis(){ let dOn=false; try{ dOn=DOT.on; }catch(e){} const v=S.labels&&!G.on&&!dOn?'visible':'none'; for(const id of placeLayers) if(map.getLayer(id)) map.setLayoutProperty(id,'visibility',v); }
 // 太陽高度角低於 h0 的區域：每一個緯度帶，夜晚是以「背對太陽的經線」為中心、半寬 w 的一段經度
 function nightGeo(h0){
   const s=sunPos(S.simT), dec=s[1]*D2R, anti=s[0]+180, sh=Math.sin(h0*D2R), rows=[];
@@ -424,7 +434,7 @@ let WG=null;
 async function loadWind(){
   try{
     const ab=await getTurbines('data/wind.bin.gz',{cache:'no-cache'}), dv=new DataView(ab);
-    if(dv.getUint32(0,true)!==0x31444e57||dv.getUint32(4,true)!==2) throw new Error('風場檔格式不符');
+    if(dv.getUint32(0,true)!==0x31444e57||dv.getUint32(4,true)!==2) throw new Error(tr('風場檔格式不符'));
     const ni=dv.getUint16(8,true), nj=dv.getUint16(10,true), nt=dv.getUint16(12,true);
     const lat1=dv.getFloat32(16,true), lon1=dv.getFloat32(20,true), dlat=dv.getFloat32(24,true), dlon=dv.getFloat32(28,true), sc=dv.getFloat32(32,true);
     const times=[]; for(let k=0;k<nt;k++) times.push(dv.getUint32(36+4*k,true));
@@ -433,7 +443,7 @@ async function loadWind(){
     WG={ni,nj,nt,lat1,lon1,dlat,dlon,times,d};
     const meta=await getJSON('data/wind-meta.json',{cache:'no-cache'}).catch(()=>null);
     const run=meta&&new Date(meta.run), lbl=document.querySelector('.live');
-    if(lbl){ lbl.innerHTML='<i></i>即時風場'; lbl.title=`NOAA GFS 全球預報${run?`（${run.getMonth()+1}/${run.getDate()} ${String(run.getHours()).padStart(2,'0')}:00 起報）`:''}，每 6 小時更新`; }
+    if(lbl&&windLive(simSec)){ lbl.innerHTML='<i></i>'+tr('即時風場'); lbl.title=tr('NOAA GFS 全球預報{run}，每 6 小時更新',{run:run?tr('（{m}/{d} {h}:00 起報）',{m:run.getMonth()+1,d:run.getDate(),h:String(run.getHours()).padStart(2,'0')}):''}); }
     clearTrails();
   }catch(e){ console.warn('即時風場讀取失敗，改用模擬風場',e); }
 }
@@ -448,9 +458,11 @@ function windGrid(lon,lat,t){
   return [s(b0)*(1-f)+s(b1)*f, s(b0+n)*(1-f)+s(b1+n)*f];
 }
 // 10 公尺高的風換算成輪轂高度的風（真實風場：陸上約 ×1.3、離岸約 ×1.15；模擬風場沿用原本的經驗式）
-function hubWs(s,off){ return WG?s*(off?1.15:1.3):s*(off?1.2:1.05)+(off?3.2:2.2); }
+// 風場檔太舊（最後一個預報時間過了 12 小時以上，例如自動更新停了）：改用模擬風場，不要一直停在舊的颱風風場
+const windLive=t=>!!WG&&t<=WG.times[WG.nt-1]+43200;
+function hubWs(s,off){ return windLive(simSec)?s*(off?1.15:1.3):s*(off?1.2:1.05)+(off?3.2:2.2); }
 function windAt(lon,lat,t){
-  if(WG) return windGrid(lon,lat,t);
+  if(windLive(t)) return windGrid(lon,lat,t);
   const b=baseWind(lon,lat,t); let u=b[0], v=b[1];
   for(let i=0;i<VORT.length;i++){
     const o=VORT[i]; if(o.amp<0.05) continue;
@@ -490,7 +502,9 @@ stepVort(0);
 // 中央氣象署颱風分級（近中心最大風速，10 分鐘平均）：熱帶性低氣壓 <17.2、輕度 17.2–32.6、中度 32.7–50.9、強烈 ≥51.0 m/s
 const TY_CLS=[17.2,32.7,51.0];
 const tyClass=v=>v<TY_CLS[0]?0:v<TY_CLS[1]?1:v<TY_CLS[2]?2:3;
-const tyClassName=(c,kind='颱風')=>c===0?'熱帶性低氣壓':['','輕度','中度','強烈'][c]+kind;
+// 颱風名稱：中文介面用中文名，其他語言用英文名（字首大寫）
+const tyName=ty=>I18N.zh||!ty.en?trName(ty.name):ty.en.charAt(0)+ty.en.slice(1).toLowerCase();
+const tyClassName=(c,kind='颱風')=>tr(c===0?'熱帶性低氣壓':['','輕度','中度','強烈'][c]+kind);
 // 每一級的顏色：雲帶、臉、標籤
 const TY_PAL=[
   {band:'200,232,246', face:'#bfe8f5', pill:'rgba(110,160,190,.94)', dot:'#8fbcd4'},
@@ -535,7 +549,7 @@ function updTyphoons(){
     s.ty=ty; s.cl=Math.cos(s.lat*D2R); s.R=1.2;
     s.c=tyClass(s.v);
     // GFS 看得到颱風時對到風場的颱風眼；離官方位置太遠（GFS 已經抓不到這個颱風）就用官方位置
-    if(WG&&s.v>=20){ const e=gfsEye(s); if(e&&Math.hypot((e[0]-s.lon)*s.cl,e[1]-s.lat)<=1.0){ s.lon=e[0]; s.lat=e[1]; s.cl=Math.cos(s.lat*D2R); } }
+    if(windLive(simSec)&&s.v>=20){ const e=gfsEye(s); if(e&&Math.hypot((e[0]-s.lon)*s.cl,e[1]-s.lat)<=1.0){ s.lon=e[0]; s.lat=e[1]; s.cl=Math.cos(s.lat*D2R); } }
     TYS.push(s);
   }
 }
@@ -624,7 +638,7 @@ const VCI=3, VR=12, VCO=25;
 function powerFrac(v){ if(v<VCI||v>=VCO) return 0; if(v>=VR) return 1; return (v**3-VCI**3)/(VR**3-VCI**3); }
 function farmWind(f){
   const w=windAt(f.lon,f.lat,simSec); let s=Math.hypot(w[0],w[1]);
-  s = hubWs(s,f.k!=='on')+(WG?0.6:1.3)*Math.sin(simSec/1800+f.ph);
+  s = hubWs(s,f.k!=='on')+(windLive(simSec)?0.6:1.3)*Math.sin(simSec/1800+f.ph);
   return Math.max(0,s);
 }
 function updateFarms(dtR){
@@ -637,7 +651,7 @@ function updateFarms(dtR){
   }
 }
 const BF=[0.3,1.6,3.4,5.5,8.0,10.8,13.9,17.2,20.8,24.5,28.5,32.7];
-const BFN=['無風','軟風','輕風','微風','和風','清風','強風','疾風','大風','烈風','狂風','暴風','颶風'];
+const BFN=['無風','軟風','輕風','微風','和風','清風','強風','疾風','大風','烈風','狂風','暴風','颶風'].map(x=>tr(x));
 function beaufort(v){let i=0;while(i<BF.length&&v>=BF[i])i++;return i;}
 
 /* ---------- 風的粒子 ---------- */
@@ -654,7 +668,7 @@ function spawn(p,init){
   p.lon=cLon+(Math.random()-0.5)*30; p.lat=Math.max(-80,Math.min(80,cLat+(Math.random()-0.5)*30)); p.age=0; p.max=30;
 }
 // 放大到看得見一支支風機時（kmPx≥2），風線減半：這時的風幾乎是同一個方向，不需要那麼多
-function partCount(){ return Math.round(Math.min(2600,Math.max(600,W*H/480))*(kmPx>=2?0.5:1)); }
+function partCount(){ return Math.round(Math.min(2600,Math.max(600,W*H/480))*(kmPx>=2?0.5:1)*[0.45,0.75,1][QUAL.lvl]); }
 function initParticles(){
   const n=partCount();
   parts=new Array(n); for(let i=0;i<n;i++){parts[i]={lon:0,lat:0,age:0,max:0};spawn(parts[i],true);}
@@ -863,16 +877,16 @@ function drawFarms(dtR){
   if(detailed&&EXTRA.length){
     drawTrueSet(g,EXTRA,100,80,performance.now()/1000*1.2,t=>{const w=windAt(t.lon,t.lat,simSec);return `hsla(${195-powerFrac(hubWs(Math.hypot(w[0],w[1]),false))*150},90%,${C.dark?62:44}%,.95)`;},null,0.4,occ);
   }
-  drawGameMark(g); drawDots(g);
-  if(S.big&&detailed){ const t='風機圖示已放大，大小非等比例（按 B 切換）'; g.font='500 12px "Noto Sans TC",sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; g.lineWidth=3; g.strokeStyle=C.halo; g.strokeText(t,W/2,H-12); g.fillStyle=C.warm; g.fillText(t,W/2,H-12); g.textAlign='start'; }
-  if(S.labels){
+  drawMe(g); drawGameMark(g); drawDots(g);
+  if(S.big&&detailed&&!DOT.on){ const t=tr('風機圖示已放大，大小非等比例（按 B 切換）'); g.font='500 12px "Noto Sans TC",sans-serif'; g.textAlign='center'; g.textBaseline='bottom'; g.lineWidth=3; g.strokeStyle=C.halo; g.strokeText(t,W/2,H-12); g.fillStyle=C.warm; g.fillText(t,W/2,H-12); g.textAlign='start'; }
+  if(S.labels&&!DOT.on){
     labelBoxes=[];
     g.font='500 12px "Noto Sans TC","Microsoft JhengHei",sans-serif'; g.textBaseline='middle'; g.lineJoin='round';
     const order=FARMS.filter(f=>f.px).sort((a,b)=>(b===S.sel)-(a===S.sel)||(b.tw?1:0)-(a.tw?1:0)||b.mw-a.mw);
     for(const f of order){
       const show = f===S.sel || Z>=2.4 || f.mw>=1200 || (f.tw&&Z>=1.8) || f.id==='rossisland'||f.id==='formosa1';
       if(!show) continue;
-      const txt=f.n.replace(/（.*?）/,''), w=g.measureText(txt).width;
+      const txt=f.ns, w=g.measureText(txt).width;
       const x=f.px[0]+f.r+6, y=f.px[1]-(icons&&!(f.tur&&detailed)?Math.min(18,Z*0.8):0);
       const box=[x-2,y-9,x+w+2,y+9];
       if(labelBoxes.some(b=>!(box[2]<b[0]||box[0]>b[2]||box[3]<b[1]||box[1]>b[3]))) continue;
@@ -905,11 +919,16 @@ function pickTurbine(x,y){
     best={lon:WT.xy[2*i]/1e5,lat:WT.xy[2*i+1]/1e5,D:DCL[kk]||0,farm:null,off:!!((WT.cl[i]>>4)&1),kind:WT.cl[i]>>5}; } } }
   return best;
 }
+// 地圖上這個位置是不是水面（看底圖畫出來的水域；底圖還沒載入時當作是）
+function onWater(t){
+  try{ if(!map.isSourceLoaded('openmaptiles')) return true;
+    const p=map.project([t.lon,t.lat]), fs=map.queryRenderedFeatures([[p.x-2,p.y-2],[p.x+2,p.y+2]]);
+    return fs.some(f=>f.sourceLayer==='water'&&f.layer.type==='fill'); }catch(e){ return true; }
+}
 /* ---------- 風機卡片：所在地區、唸出來、自訂名稱 ---------- */
 // 國家：地圖國界的 ISO 數字代碼 → 兩碼國碼 → 瀏覽器內建的中文國名
 const ISO2=Object.fromEntries('4:AF,8:AL,10:AQ,12:DZ,16:AS,20:AD,24:AO,28:AG,31:AZ,32:AR,36:AU,40:AT,44:BS,48:BH,50:BD,51:AM,52:BB,56:BE,60:BM,64:BT,68:BO,70:BA,72:BW,76:BR,84:BZ,86:IO,90:SB,92:VG,96:BN,100:BG,104:MM,108:BI,112:BY,116:KH,120:CM,124:CA,132:CV,136:KY,140:CF,144:LK,148:TD,152:CL,156:CN,158:TW,170:CO,174:KM,178:CG,180:CD,184:CK,188:CR,191:HR,192:CU,196:CY,203:CZ,204:BJ,208:DK,212:DM,214:DO,218:EC,222:SV,226:GQ,231:ET,232:ER,233:EE,234:FO,238:FK,239:GS,242:FJ,246:FI,248:AX,250:FR,258:PF,260:TF,262:DJ,266:GA,268:GE,270:GM,275:PS,276:DE,288:GH,296:KI,300:GR,304:GL,308:GD,316:GU,320:GT,324:GN,328:GY,332:HT,334:HM,336:VA,340:HN,344:HK,348:HU,352:IS,356:IN,360:ID,364:IR,368:IQ,372:IE,376:IL,380:IT,384:CI,388:JM,392:JP,398:KZ,400:JO,404:KE,408:KP,410:KR,414:KW,417:KG,418:LA,422:LB,426:LS,428:LV,430:LR,434:LY,438:LI,440:LT,442:LU,446:MO,450:MG,454:MW,458:MY,462:MV,466:ML,470:MT,478:MR,480:MU,484:MX,492:MC,496:MN,498:MD,499:ME,500:MS,504:MA,508:MZ,512:OM,516:NA,520:NR,524:NP,528:NL,531:CW,533:AW,534:SX,540:NC,548:VU,554:NZ,558:NI,562:NE,566:NG,570:NU,574:NF,578:NO,580:MP,583:FM,584:MH,585:PW,586:PK,591:PA,598:PG,600:PY,604:PE,608:PH,612:PN,616:PL,620:PT,624:GW,626:TL,630:PR,634:QA,642:RO,643:RU,646:RW,652:BL,654:SH,659:KN,660:AI,662:LC,663:MF,666:PM,670:VC,674:SM,678:ST,682:SA,686:SN,688:RS,690:SC,694:SL,702:SG,703:SK,704:VN,705:SI,706:SO,710:ZA,716:ZW,724:ES,728:SS,729:SD,732:EH,740:SR,748:SZ,752:SE,756:CH,760:SY,762:TJ,764:TH,768:TG,776:TO,780:TT,784:AE,788:TN,792:TR,795:TM,796:TC,800:UG,804:UA,807:MK,818:EG,826:GB,831:GG,832:JE,833:IM,834:TZ,840:US,850:VI,854:BF,858:UY,860:UZ,862:VE,876:WF,882:WS,887:YE,894:ZM'.split(',').map(s=>s.split(':')));
-const ZH_REGION=(()=>{ try{ return new Intl.DisplayNames(['zh-Hant-TW'],{type:'region'}); }catch(e){ return null; } })();
-const countryZh=f=>{ const a=ISO2[Number(f.id)]; try{ return (a&&ZH_REGION&&ZH_REGION.of(a))||f.properties.name; }catch(e){ return f.properties.name; } };
+const countryZh=f=>I18N.regionName(ISO2[Number(f.id)],f.properties.name); // 用介面語言的國名
 // 點在海上時，往外一圈一圈找最近的陸地（離岸風機要知道是哪個國家、哪個縣市外海）
 function nearestHit(feats,lon,lat){
   for(const f of feats) if(d3.geoContains(f,[lon,lat])) return f;
@@ -919,9 +938,9 @@ function nearestHit(feats,lon,lat){
 }
 function turbineRegion(t){
   const parts=[], land=nearestHit(TWC.concat(C50F),t.lon,t.lat); // 台灣各縣市（含金門、馬祖）放前面，跟其他國家一起找
-  if(land&&land.properties.COUNTYNAME) parts.push('台灣',land.properties.COUNTYNAME);
-  else{ if(land) parts.push(countryZh(land)); const r=ZONES&&regionAtLL(t.lon,t.lat); if(r&&r.name&&!parts.includes(r.name)) parts.push(r.name); }
-  if(t.farm) parts.push(t.farm.n.replace(/（.*?）/,'')); // 風場（有分期的名稱裡就有「一期」「二期」）
+  if(land&&land.properties.COUNTYNAME) parts.push(tr('台灣'),trName(land.properties.COUNTYNAME));
+  else{ if(land) parts.push(countryZh(land)); const r=ZONES&&regionAtLL(t.lon,t.lat), rn=r&&trName(r.name); if(rn&&!parts.includes(rn)) parts.push(rn); }
+  if(t.farm) parts.push(t.farm.ns); // 風場（有分期的名稱裡就有「一期」「二期」）
   return parts;
 }
 let TNAMES={}; try{ TNAMES=JSON.parse(localStorage.getItem('windglobe-tnames')||'{}'); }catch(e){}
@@ -933,9 +952,9 @@ let kbEl=null, kbDone=null, kbVal='';
 function openKeyboard(init,onDone){
   if(!kbEl){
     kbEl=document.createElement('div'); kbEl.className='kbd'; kbEl.hidden=true;
-    kbEl.innerHTML='<div class="kbd-box"><div class="kbd-h">幫這支風車取名字</div><div class="kbd-out" aria-live="polite"></div>'+
+    kbEl.innerHTML='<div class="kbd-box"><div class="kbd-h">'+tr('幫這支風車取名字')+'</div><div class="kbd-out" aria-live="polite"></div>'+
       KB_ROWS.map((r,ri)=>'<div class="kbd-row'+(ri<2?' top':'')+'">'+[...r].map(c=>'<button type="button" data-k="'+c+'">'+c+'</button>').join('')+'</div>').join('')+
-      '<div class="kbd-row act"><button type="button" data-a="sp">空格</button><button type="button" data-a="bs">⌫</button><button type="button" data-a="clr">清除</button><button type="button" data-a="no">取消</button><button type="button" data-a="ok" class="ok">完成</button></div></div>';
+      '<div class="kbd-row act"><button type="button" data-a="sp">'+tr('空格')+'</button><button type="button" data-a="bs">⌫</button><button type="button" data-a="clr">'+tr('清除')+'</button><button type="button" data-a="no">'+tr('取消')+'</button><button type="button" data-a="ok" class="ok">'+tr('完成')+'</button></div></div>';
     $('#stage').append(kbEl);
     let n=0;
     kbEl.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; e.stopPropagation();
@@ -956,31 +975,33 @@ let tPopup=null;
 function showTurbinePopup(t){
   if(tPopup) tPopup.remove();
   const ll=`${t.lat.toFixed(6)},${t.lon.toFixed(6)}`, el=document.createElement('div'); el.className='tpop';
-  el.innerHTML='<b></b><p></p><div class="tpop-b"><a target="_blank" rel="noopener">Google 街景</a><a target="_blank" rel="noopener">Google 地圖</a></div><small></small>';
-  el.querySelector('b').textContent=t.farm?t.farm.n.replace(/（.*?）/,'')+'的風機':t.kind===3?'傳統風車（磨坊）':t.kind===2?'垂直軸風機':t.kind===1?'兩葉片風機':(t.off?'離岸風機':'陸上風機');
-  el.querySelector('p').textContent=(t.D?`葉輪直徑約 ${t.D} 公尺（推估）・`:'')+`${Math.abs(t.lat).toFixed(4)}°${t.lat>=0?'N':'S'}，${Math.abs(t.lon).toFixed(4)}°${t.lon>=0?'E':'W'}`;
+  el.innerHTML='<b></b><p></p><div class="tpop-b"><a target="_blank" rel="noopener">'+tr('Google 街景')+'</a><a target="_blank" rel="noopener">'+tr('Google 地圖')+'</a></div><small></small>';
+  el.querySelector('b').textContent=t.farm?tr('{f}的風機',{f:t.farm.ns}):tr(t.kind===3?'傳統風車（磨坊）':t.kind===2?'垂直軸風機':t.kind===1?'兩葉片風機':(t.off?'離岸風機':'陸上風機'));
+  el.querySelector('p').textContent=(t.D?tr('葉輪直徑約 {d} 公尺（推估）・',{d:t.D}):'')+`${Math.abs(t.lat).toFixed(4)}°${t.lat>=0?'N':'S'}${tr('，')}${Math.abs(t.lon).toFixed(4)}°${t.lon>=0?'E':'W'}`;
   const [aSv,aMap]=el.querySelectorAll('a');
   // api=1&map_action=pano 的網址有時打開是全黑、要拖一下才出現，改用 layer=c&cbll= 的街景網址
   aSv.href=`https://www.google.com/maps?layer=c&cbll=${ll}&cbp=12,0,0,0,0`;
   if(t.off) aSv.remove(); // 海上沒有街景
   aMap.href=`https://www.google.com/maps?q=${ll}&t=k&z=17`; // q＝在風機位置插紅色大頭針，t=k＝衛星圖
-  el.querySelector('small').textContent=t.off?'在海上沒有街景，可以看空照':'街景會找最近的拍攝點，轉一轉就能找到風車';
+  el.querySelector('small').textContent=tr(t.off?'在海上沒有街景，可以看空照':'街景會找最近的拍攝點，轉一轉就能找到風車');
   // 此刻的狀態：風場圖鑑裡的用風場的風速，其他的跟畫面上一樣用所在 1° 格子中心的風（同一格的風機一起轉、一起停）
   let ws; if(t.farm) ws=t.farm.ws; else { const w=windAt(Math.floor(t.lon)+0.5,Math.floor(t.lat)+0.5,simSec); ws=hubWs(Math.hypot(w[0],w[1]),false); }
   const st=document.createElement('p'); st.className='tpop-st';
-  st.textContent=t.kind===3?'傳統風車：以前用來磨麵粉、抽水，現在大多當作古蹟展示':
-    `此刻風速約 ${ws.toFixed(1)} m/s・`+(t.farm&&t.farm.st==='ret'?'已退役，不再轉動':ws>=VCO?'風太強，葉片轉成順風方向「保護停機」，等風變小再轉':ws<VCI?'風太小，慢慢空轉':'正在發電');
+  st.textContent=t.kind===3?tr('傳統風車：以前用來磨麵粉、抽水，現在大多當作古蹟展示'):
+    tr('此刻風速約 {v} m/s・',{v:ws.toFixed(1)})+tr(t.farm&&t.farm.st==='ret'?'已退役，不再轉動':ws>=VCO?'風太強，葉片轉成順風方向「保護停機」，等風變小再轉':ws<VCI?'風太小，慢慢空轉':'正在發電');
   el.querySelector('p').after(st);
   // 所在地區（國家・縣市或省州・風場）＋唸出來的按鈕；自訂名稱（彩色按鈕打開小鍵盤）
   const reg=turbineRegion(t), nm=document.createElement('div'); nm.className='tpop-nm';
   const rg=document.createElement('div'); rg.className='tpop-reg';
-  rg.innerHTML='<span></span><button type="button" class="tpop-say" aria-label="唸出來">🔊</button>'; rg.querySelector('span').textContent=reg.join('・')||'地區不明';
+  rg.innerHTML='<span></span><button type="button" class="tpop-say">🔊</button>'; rg.querySelector('button').setAttribute('aria-label',tr('唸出來')); rg.querySelector('span').textContent=reg.join('・')||tr('地區不明');
   const rn=document.createElement('button'); rn.type='button'; rn.className='tpop-rename';
-  const showName=()=>{ const n=TNAMES[tKey(t)]; nm.textContent=n?'⭐ '+n:''; nm.hidden=!n; rn.textContent=n?'✏️ 改名字':'✏️ 幫它取名字'; };
+  const showName=()=>{ const n=TNAMES[tKey(t)]; nm.textContent=n?'⭐ '+n:''; nm.hidden=!n; rn.textContent=n?tr('✏️ 改名字'):tr('✏️ 幫它取名字'); };
   showName();
-  rg.querySelector('button').onclick=()=>{ const n=TNAMES[tKey(t)]; const v=S.voice; S.voice=true; say((n?n+'，':'')+(reg.join('，')||'這支風車')); S.voice=v; };
+  rg.querySelector('button').onclick=()=>{ const n=TNAMES[tKey(t)]; const v=S.voice; S.voice=true; say((n?n+tr('，'):'')+(reg.join(tr('，'))||tr('這支風車'))); S.voice=v; };
   rn.onclick=()=>openKeyboard(TNAMES[tKey(t)]||'',v=>{ saveTName(t,v); showName(); if(v) addStar(); });
-  el.querySelector('b').after(nm); st.after(rg,rn);
+  const bw=document.createElement('button'); bw.type='button'; bw.className='tpop-bw'; bw.textContent=tr('⛏ 進入方塊世界');
+  bw.onclick=()=>{ if(tPopup) tPopup.remove(); openBlocks(t); };
+  el.querySelector('b').after(nm); st.after(rg,rn,bw);
   // 視窗放在風機下方，才不會蓋住轉動的葉片
   tPopup=new maplibregl.Popup({closeButton:true,maxWidth:'260px',offset:12,anchor:'top'}).setLngLat([t.lon,t.lat]).setDOMContent(el).addTo(map);
 }
@@ -991,6 +1012,7 @@ map.on('click',e=>{
   else if(DOT.on) dotClick(x,y);
   else{
     const t=kmPx>=0.8?pickTurbine(x,y):null;
+    if(t&&t.off&&!t.farm&&!onWater(t)) t.off=false; // OSM 有些海堤、填海地上的風機標成離岸：地圖上那裡是陸地就當陸上風機（有街景）
     if(t){ tapNote(t,y); showTurbinePopup(t); if(t.farm&&S.sel!==t.farm) select(t.farm,false); return; }
     const f=pick(x,y); if(f){userTook();select(f,true);} else select(null);
   }
@@ -1012,12 +1034,12 @@ function select(f,go){
   hideHint(); addSticker(f);
   panel.hidden=false;
   const kd=$('#pKind'); kd.className='p-kind '+(f.st==='ret'?'ret':f.k);
-  kd.textContent=(kindName[f.k]||'')+'風場'+(f.st==='ret'?'・已退役':f.st==='build'?'・建置／分期運轉中':'');
-  $('#pName').textContent=f.n; $('#pEn').textContent=f.e; $('#pLoc').textContent=f.c+'　'+f.y+' 年啟用';
-  $('#pCap').textContent=fmtMW(f.mw); $('#pT').textContent='約 '+f.t.toLocaleString()+' 支';
+  kd.textContent=tr('{k}風場',{k:kindName[f.k]||''})+(f.st==='ret'?tr('・已退役'):f.st==='build'?tr('・建置／分期運轉中'):'');
+  $('#pName').textContent=f.n; $('#pEn').textContent=f.e===f.n?'':f.e; $('#pLoc').textContent=f.c+'　'+tr('{y} 年啟用',{y:f.y});
+  $('#pCap').textContent=fmtMW(f.mw); $('#pT').textContent=tr('約 {n} 支',{n:f.t.toLocaleString()});
   $('#pNote').textContent=f.note;
-  let meta=`${Math.abs(f.lat).toFixed(2)}°${f.lat>=0?'N':'S'}，${Math.abs(f.lon).toFixed(2)}°${f.lon>=0?'E':'W'}（約略中心）`;
-  if(f.tur) meta+=`。機型 ${f.unit}，葉輪直徑 ${f.D} m，輪轂高約 ${f.hh} m。`+(f.realN?`風機位置：${f.osm?'OpenStreetMap 標註的實際位置':'匯入的實測座標'} ${f.realN} 支${f.realN<f.t*0.9?`（全場約 ${f.t} 支，其餘尚未被標註）`:''}。`:`風機位置：依間距約 ${f.sp} km 等比例示意排列，非實測座標。`);
+  let meta=`${Math.abs(f.lat).toFixed(2)}°${f.lat>=0?'N':'S'}${tr('，')}${Math.abs(f.lon).toFixed(2)}°${f.lon>=0?'E':'W'}`+tr('（約略中心）');
+  if(f.tur) meta+=tr('。機型 {u}，葉輪直徑 {d} m，輪轂高約 {h} m。',{u:f.unit,d:f.D,h:f.hh})+(f.realN?tr('風機位置：{src} {n} 支{rest}。',{src:tr(f.osm?'OpenStreetMap 標註的實際位置':'匯入的實測座標'),n:f.realN,rest:f.realN<f.t*0.9?tr('（全場約 {t} 支，其餘尚未被標註）',{t:f.t}):''}):tr('風機位置：依間距約 {sp} km 等比例示意排列，非實測座標。',{sp:f.sp}));
   $('#pMeta').textContent=meta;
   updPanel();
   if(go){
@@ -1029,19 +1051,19 @@ function fmtMW(mw){return mw>=1000?(mw/1000).toFixed(mw>=10000?0:1)+' GW':(mw<10
 function updPanel(){
   const f=S.sel; if(!f) return;
   const bf=beaufort(f.ws);
-  $('#pWs').textContent=f.ws.toFixed(1)+' m/s'; $('#pBf').textContent=`${bf} 級 ${BFN[bf]}`;
+  $('#pWs').textContent=f.ws.toFixed(1)+' m/s'; $('#pBf').textContent=tr('{n} 級 {name}',{n:bf,name:BFN[bf]});
   const out=f.mw*f.frac;
   $('#pOut').textContent=fmtMW(out); $('#pPct').textContent=Math.round(f.frac*100)+'%';
   $('#pRpm').textContent=f.rpm.toFixed(1)+' rpm';
-  $('#pState').textContent=f.st==='ret'?'已退役':f.ws>=VCO?'風太強，保護停機':f.ws<VCI?'風太小，慢慢空轉':f.frac>=1?'全力發電':'發電中';
+  $('#pState').textContent=tr(f.st==='ret'?'已退役':f.ws>=VCO?'風太強，保護停機':f.ws<VCI?'風太小，慢慢空轉':f.frac>=1?'全力發電':'發電中');
   const homes=out*1000/0.42;
-  $('#pHome').textContent=homes>=10000?(homes/10000).toFixed(homes>=1e5?0:1)+' 萬':Math.round(homes).toLocaleString();
+  $('#pHome').textContent=I18N.zh&&homes>=10000?(homes/10000).toFixed(homes>=1e5?0:1)+tr(' 萬'):Math.round(homes).toLocaleString(I18N.locale);
 }
 $('#pClose').onclick=()=>select(null);
 
 /* ---------- 控制列 ---------- */
 const bPlay=$('#bPlay'), spd=$('#spd'), tl=$('#tl');
-function setPlaying(p){S.playing=p;bPlay.textContent=p?'❚❚':'▶';bPlay.setAttribute('aria-label',p?'暫停':'播放');}
+function setPlaying(p){S.playing=p;bPlay.textContent=p?'❚❚':'▶';bPlay.setAttribute('aria-label',tr(p?'暫停':'播放'));}
 bPlay.onclick=()=>setPlaying(!S.playing);
 function setSpeed(i){S.speedIdx=Math.max(0,Math.min(5,i));spd.value=S.speedIdx;$('#spdV').textContent=SPD_LBL[S.speedIdx];}
 spd.oninput=()=>setSpeed(+spd.value);
@@ -1063,10 +1085,10 @@ document.addEventListener('click',e=>{ if(e.isTrusted&&!wmenu.hidden&&!wmenu.con
 updWindMenu();
 toggleBtn('#bNight','night',()=>{lastNightT=0;lastNightR=0;updNight();applyNightVis();});
 toggleBtn('#bLabel','labels',()=>{ applyLabelVis(); if(typeof updShowMenu==='function') updShowMenu(); });
-toggleBtn('#bBig','big',()=>{$('#bigLbl').textContent=S.big?'放大':'等比例'; if(typeof updShowMenu==='function') updShowMenu();});
-toggleBtn('#bTilt','tilt',()=>{$('#tiltLbl').textContent=S.tilt?'立體':'平坦';applyTilt(true);});
+toggleBtn('#bBig','big',()=>{$('#bigLbl').textContent=tr(S.big?'放大':'等比例'); if(typeof updShowMenu==='function') updShowMenu();});
+toggleBtn('#bTilt','tilt',()=>{$('#tiltLbl').textContent=tr(S.tilt?'立體':'平坦');applyTilt(true);});
 $('#bView').onclick=()=>{
-  S.mode=S.mode==='3d'?'2d':'3d'; $('#viewLbl').textContent=S.mode==='3d'?'地球':'平面'; $('#bView').setAttribute('aria-pressed',S.mode==='3d');
+  S.mode=S.mode==='3d'?'2d':'3d'; $('#viewLbl').textContent=tr(S.mode==='3d'?'地球':'平面'); $('#bView').setAttribute('aria-pressed',S.mode==='3d');
   if(styleReady) map.setProjection({type:S.mode==='3d'?'globe':'mercator'});
   clearTrails(); setTimeout(()=>{applyView();initParticles();vv++;},50);
 };
@@ -1081,12 +1103,14 @@ function applyTheme(force=false){
 const mset=$('#mset');
 const curStyle=()=>mapStyle==='auto'?(isDark()?'dark':'light'):mapStyle;
 function updMset(){
-  const cs=curStyle(); $('#mapLbl').textContent={light:'明',dark:'暗',sat:'衛星',land:'地景'}[cs];
+  const cs=curStyle(); $('#mapLbl').textContent=tr({light:'明',dark:'暗',sat:'衛星',land:'地景'}[cs]);
   for(const b of $('#msStyle').children) b.setAttribute('aria-pressed',b.dataset.v===cs);
   for(const b of $('#msTilt').children) b.setAttribute('aria-pressed',(b.dataset.v==='1')===S.tilt);
   const sw=(id,on,dis)=>{ const b=$(id); b.setAttribute('aria-checked',on); b.disabled=!!dis; };
   sw('#msEmap',twEmap&&mapStyle!=='sat',mapStyle==='sat'); sw('#msBld',S.bld); sw('#msNight',S.night);
   sw('#msAuto',mapStyle==='auto'&&theme==='auto',mapStyle!=='auto');
+  for(const b of $('#msQual').children) b.setAttribute('aria-pressed',b.dataset.v===QUAL.mode);
+  $('#msQualNow').textContent=QUAL.mode==='auto'?tr('目前：{q}',{q:tr(['低','中','高'][QUAL.lvl])}):'';
 }
 function closeMset(){ mset.hidden=true; $('#bMapSet').setAttribute('aria-pressed',false); }
 $('#bMapSet').onclick=e=>{ e.stopPropagation(); updMset(); mset.hidden=!mset.hidden; $('#bMapSet').setAttribute('aria-pressed',!mset.hidden); };
@@ -1097,12 +1121,15 @@ $('#msStyle').onclick=e=>{ const v=e.target.closest('button')?.dataset.v; if(!v)
   if(v==='light'||v==='dark'){ mapStyle='auto'; theme=v; try{localStorage.setItem('windglobe-theme',theme);}catch(err){} } else mapStyle=v;
   try{localStorage.setItem('windglobe-mapstyle',mapStyle);}catch(err){}
   applyTheme(was!==mapStyle); // 換衛星、地景（或換回來）要重新載入地圖樣式
-  if(v==='sat'&&was!=='sat') toast('衛星圖：全世界用 Sentinel-2（約 10 公尺解析度），台灣放大後換成內政部高解析正射影像',4000); };
+  if(v==='sat'&&was!=='sat') toast(tr('衛星圖：全世界用 Sentinel-2（約 10 公尺解析度），台灣放大後換成內政部高解析正射影像'),4000); };
 $('#msEmap').onclick=()=>{ twEmap=!twEmap; try{localStorage.setItem('windglobe-base',twEmap?'emap':'vector');}catch(e){} applyBase(); updMset();
-  if(twEmap&&(kmPx<0.1||Math.abs(cLon-120.9)>4||Math.abs(cLat-23.7)>4)) toast('電子地圖只有台灣範圍，放大到台灣就看得到'); };
+  if(twEmap&&(kmPx<0.1||Math.abs(cLon-120.9)>4||Math.abs(cLat-23.7)>4)) toast(tr('電子地圖只有台灣範圍，放大到台灣就看得到')); };
 $('#msTilt').onclick=e=>{ const v=e.target.closest('button')?.dataset.v; if(v&&(v==='1')!==S.tilt){ $('#bTilt').click(); updMset(); } };
 $('#msBld').onclick=()=>{ S.bld=!S.bld; try{localStorage.setItem('windglobe-bld',S.bld?'1':'0');}catch(e){} if(map.getLayer('building-3d')) map.setLayoutProperty('building-3d','visibility',S.bld?'visible':'none'); updMset(); };
 $('#msNight').onclick=()=>{ $('#bNight').click(); updMset(); };
+$('#msQual').onclick=e=>{ const v=e.target.closest('button')?.dataset.v; if(!v) return;
+  QUAL.mode=v; QUAL.fail=[0,0,0]; QUAL.good=0; try{localStorage.setItem('windglobe-quality',v);}catch(err){}
+  if(v!=='auto') setQual(+v); updMset(); };
 $('#msAuto').onclick=()=>{ if(mapStyle!=='auto') return; theme=theme==='auto'?(isDark()?'dark':'light'):'auto'; try{localStorage.setItem('windglobe-theme',theme);}catch(e){} applyTheme(); };
 // 標示鈕：風場名稱、風機圖示大小兩個開關放在同一個小選單
 const lmenu=$('#lmenu');
@@ -1139,7 +1166,7 @@ function nnOrder(list,lon,lat){ // 從最近的一區開始，每次走到最近
 async function zenPlan(){
   const p=[cLon,cLat];
   if(d3.geoContains(twLand,p)||(cLon>119.2&&cLon<122.3&&cLat>21.8&&cLat<25.5)){
-    ZEN.country='台灣';
+    ZEN.country=tr('台灣');
     return nnOrder(TWC.map(f=>bboxStop(f.properties.COUNTYNAME,d3.geoBounds(f))),cLon,cLat);
   }
   const c=C50.find(f=>d3.geoContains(f,p)); if(!c) return [];
@@ -1157,7 +1184,7 @@ function zenGo(){
   if(!S.zen||!ZEN.stops.length) return;
   const s=ZEN.stops[ZEN.i%ZEN.stops.length]; ZEN.i++;
   flyTo(s.lon,s.lat,0,4500,Math.min(W,H)*0.8/s.km);
-  toast(`🌬 ${ZEN.country}・${s.name}（${(ZEN.i-1)%ZEN.stops.length+1}/${ZEN.stops.length}）`,4000);
+  toast(`🌬 ${ZEN.country}・${trName(s.name)}（${(ZEN.i-1)%ZEN.stops.length+1}/${ZEN.stops.length}）`,4000);
   ZEN.next=performance.now()+4500+14000;
 }
 function setZen(on){
@@ -1165,7 +1192,7 @@ function setZen(on){
   ZEN.stops=[]; ZEN.i=0;
   if(on){
     if(S.tour) setTour(false); select(null);
-    hintEl.textContent='放空中⋯點一下地圖就回來'; hintEl.classList.remove('gone'); setTimeout(hideHint,3500);
+    hintEl.textContent=tr('放空中⋯點一下地圖就回來'); hintEl.classList.remove('gone'); setTimeout(hideHint,3500);
     zenPlan().then(st=>{ if(!S.zen) return; ZEN.stops=st; if(st.length) zenGo(); else flyTo(cLon,cLat,1.1,2000); });
   }
   if(MUS.on&&!PL.synth){ PL.want=on?'zen':musRegion(); PL.wantT=-1e9; } // 換成隨機歌單（關掉放空就換回音樂區的歌）
@@ -1179,7 +1206,7 @@ $('#bFs').onclick=()=>{const st=$('#stage');try{if(document.fullscreenElement)do
 document.addEventListener('fullscreenchange',()=>setTimeout(resize,60));
 
 /* ---------- 風聲・白噪音（Web Audio 即時合成） ---------- */
-const SND_TYPES=[['breeze','原野微風','跟著地圖上的風速變大變小'],['sea','海邊風浪','低低的風聲，加上一波一波的浪'],['valley','山谷呼嘯','高高低低的呼呼聲'],['storm','颱風暴風','又強又急的陣風'],['white','白噪音','平穩的沙沙聲，適合專心或睡覺']];
+const SND_TYPES=[['breeze','原野微風','跟著地圖上的風速變大變小'],['sea','海邊風浪','低低的風聲，加上一波一波的浪'],['valley','山谷呼嘯','高高低低的呼呼聲'],['storm','颱風暴風','又強又急的陣風'],['white','白噪音','平穩的沙沙聲，適合專心或睡覺']].map(([k,a,b])=>[k,tr(a),tr(b)]);
 let sndType='breeze'; try{ const t=localStorage.getItem('windglobe-sound'); if(SND_TYPES.some(x=>x[0]===t)) sndType=t; }catch(e){}
 let AC=null, sndOut=null, SND=null, lastSnd=0; const NBUF={};
 function makeNoise(kind){
@@ -1225,7 +1252,7 @@ function setSound(on,type){
   if(type){ sndType=type; try{localStorage.setItem('windglobe-sound',type);}catch(e){} }
   S.sound=on; $('#bSnd').setAttribute('aria-pressed',on);
   if(MUS.on&&PL.target>0) PL.target=MP3_VOL*duck();
-  if(on){ startSound(); toast('≋ '+SND_TYPES.find(x=>x[0]===sndType)[1]+(MUS.on?'（背景音樂自動變小聲）':''),2200); }
+  if(on){ startSound(); toast('≋ '+SND_TYPES.find(x=>x[0]===sndType)[1]+(MUS.on?tr('（背景音樂自動變小聲）'):''),2200); }
   updSoundMenu();
 }
 function toggleSound(){ setSound(!S.sound); }
@@ -1298,7 +1325,7 @@ function filterCards(){
   const q=query.trim().toLowerCase();
   for(const f of FARMS){
     let ok = filt0==='all' || (filt0==='tw'&&f.tw) || (filt0===f.k);
-    if(ok&&q) ok=(f.n+f.e+f.c).toLowerCase().includes(q);
+    if(ok&&q) ok=(f.n+f.e+f.c+f.n0).toLowerCase().includes(q);
     f.card.hidden=!ok;
   }
 }
@@ -1307,7 +1334,7 @@ $('#q').oninput=e=>{query=e.target.value;filterCards();};
 function updCards(){
   for(const f of FARMS){
     if(f.card.hidden) continue;
-    f.card.querySelector('.o').textContent=f.st==='ret'?'已退役':f.ws>=VCO?'保護停機':`風速 ${f.ws.toFixed(1)} m/s・輸出 ${Math.round(f.frac*100)}%`;
+    f.card.querySelector('.o').textContent=f.st==='ret'?tr('已退役'):f.ws>=VCO?tr('保護停機'):tr('風速 {v} m/s・輸出 {p}%',{v:f.ws.toFixed(1),p:Math.round(f.frac*100)});
     f.card.querySelector('.bar i').style.width=(f.frac*100)+'%';
   }
 }
@@ -1372,7 +1399,7 @@ function applyImport(pts){
 }
 function importMsg(pts,groups){
   const inF=[...groups.values()].reduce((s,a)=>s+a.length,0);
-  $('#impMsg').textContent=`已匯入 ${pts.length} 支風機的實測座標：${inF} 支對應到 ${groups.size} 座台灣離岸風場（取代示意排列），其餘 ${pts.length-inF} 支以一般風機（葉輪約 100 m）顯示在原位置。放大到看得見比例尺 1 km 左右就會出現。`;
+  $('#impMsg').textContent=tr('已匯入 {n} 支風機的實測座標：{a} 支對應到 {g} 座台灣離岸風場（取代示意排列），其餘 {b} 支以一般風機（葉輪約 100 m）顯示在原位置。放大到看得見比例尺 1 km 左右就會出現。',{n:pts.length,a:inF,g:groups.size,b:pts.length-inF});
   $('#bImpClr').hidden=false;
 }
 $('#bImp').onclick=()=>$('#fImp').click();
@@ -1380,16 +1407,16 @@ $('#fImp').onchange=async e=>{
   const file=e.target.files[0]; if(!file) return;
   try{
     const pts=parseImport(await file.text());
-    if(!pts.length){$('#impMsg').textContent='檔案裡沒有讀到任何座標點。GeoJSON 請用 Point；CSV 第一列請放欄位名稱（例如 lon,lat 或 X,Y）。';return;}
+    if(!pts.length){$('#impMsg').textContent=tr('檔案裡沒有讀到任何座標點。GeoJSON 請用 Point；CSV 第一列請放欄位名稱（例如 lon,lat 或 X,Y）。');return;}
     const groups=applyImport(pts); importMsg(pts,groups);
     try{localStorage.setItem('windglobe-turbines',JSON.stringify(pts));}catch(err){}
     if(S.sel) select(S.sel,false);
-  }catch(err){ $('#impMsg').textContent='讀取失敗：'+err.message+'。請確認檔案是 GeoJSON、Overpass JSON 或 CSV。'; }
+  }catch(err){ $('#impMsg').textContent=tr('讀取失敗：{e}。請確認檔案是 GeoJSON、Overpass JSON 或 CSV。',{e:err.message}); }
   e.target.value='';
 };
 $('#bImpClr').onclick=()=>{
   applyBuiltin(); try{localStorage.removeItem('windglobe-turbines');}catch(err){}
-  $('#bImpClr').hidden=true; $('#impMsg').textContent='已清除匯入的座標，回到 OpenStreetMap 的風機位置。';
+  $('#bImpClr').hidden=true; $('#impMsg').textContent=tr('已清除匯入的座標，回到 OpenStreetMap 的風機位置。');
   if(S.sel) select(S.sel,false);
 };
 function dFromMW(mw){return mw<=0?90:mw<1?50:mw<1.6?77:mw<2.6?90:mw<4.5?130:mw<7?154:mw<9?167:mw<11?174:222;}
@@ -1418,17 +1445,17 @@ function updHud(now){
   const t=new Date(S.simT+8*3600000), hh=t.getUTCHours(), mm=t.getUTCMinutes();
   const hm=pad(hh)+':'+pad(mm);
   $('#clock').textContent=hm; $('#tlTime').textContent=hm;
-  $('#tlDay').textContent=`${t.getUTCMonth()+1}/${t.getUTCDate()} 週${WK[t.getUTCDay()]}`;
+  $('#tlDay').textContent=I18N.LANG==='zh-Hant'?`${t.getUTCMonth()+1}/${t.getUTCDate()} 週${WK[t.getUTCDay()]}`:t.toLocaleDateString(I18N.locale,{timeZone:'UTC',month:'numeric',day:'numeric',weekday:'short'});
   if(!tlDrag) tl.value=hh*60+mm;
   let out=0,run=0; for(const f of FARMS){out+=f.mw*f.frac; if(f.frac>0) run++;}
   $('#outGW').textContent=(out/1000).toFixed(1);
   $('#outBar').style.width=(out/capTotal*100).toFixed(1)+'%';
-  $('#hudCount').textContent=`${run} 座風場發電中`;
-  const tr=$('#tyRow');
+  $('#hudCount').textContent=tr('{n} 座風場發電中',{n:run});
+  const tyEl=$('#tyRow');
   // 顯示離台灣最近的一個；全球還有其他的就加註「全球共 N 個」
-  if(S.ty&&TYS.length){const dist=s=>d3.geoDistance([s.lon,s.lat],[121,23.7])*6371, s=TYS.reduce((a,b)=>dist(b)<dist(a)?b:a), dTW=dist(s); tr.hidden=false;
-    tr.textContent=`🌀 ${s.ty.name}（${tyClassName(s.c,s.ty.kind)}）近中心約 ${Math.round(s.v)} m/s・距台灣約 ${Math.round(dTW/10)*10} 公里`+(TYS.length>1?`・全球共 ${TYS.length} 個`:'');}
-  else tr.hidden=true;
+  if(S.ty&&TYS.length){const dist=s=>d3.geoDistance([s.lon,s.lat],[121,23.7])*6371, s=TYS.reduce((a,b)=>dist(b)<dist(a)?b:a), dTW=dist(s); tyEl.hidden=false;
+    tyEl.textContent='🌀 '+tr('{name}（{cls}）近中心約 {v} m/s・距台灣約 {d} 公里',{name:tyName(s.ty),cls:tyClassName(s.c,s.ty.kind),v:Math.round(s.v),d:Math.round(dTW/10)*10})+(TYS.length>1?tr('・全球共 {n} 個',{n:TYS.length}):'');}
+  else tyEl.hidden=true;
   updPanel();
   if(now-lastCards>1000){lastCards=now;updCards();}
 }
@@ -1441,7 +1468,18 @@ function frame(now){
   requestAnimationFrame(frame);
   try{ frameBody(now); }catch(e){ const m=String(e&&e.stack||e); if(m!==frameErr){ frameErr=m; console.error('frame',e); } }
 }
+function setQual(l){ if(l===QUAL.lvl) return; QUAL.lvl=l; try{ map.setPixelRatio(qPR()); }catch(e){} resize(); window.WindGame3D&&WindGame3D.quality(l); if(!mset.hidden) updMset(); }
+// 每 3 秒算一次每秒張數：低於 38 張降一級；連續 15 秒都超過 55 張升一級（同一級掉下來兩次就不再升上去）
+function qualTick(dt){
+  if(QUAL.mode!=='auto'||document.hidden||dt<=0||dt>250){ QUAL.acc=QUAL.n=0; return; }
+  QUAL.acc+=dt; QUAL.n++; if(QUAL.acc<3000) return;
+  const fps=QUAL.fps=1000*QUAL.n/QUAL.acc; QUAL.acc=QUAL.n=0;
+  if(fps<38&&QUAL.lvl>0){ QUAL.fail[QUAL.lvl]++; QUAL.good=0; setQual(QUAL.lvl-1); }
+  else if(fps>55&&QUAL.lvl<2&&QUAL.fail[QUAL.lvl+1]<2){ if(++QUAL.good>=5){ QUAL.good=0; setQual(QUAL.lvl+1); } }
+  else QUAL.good=0;
+}
 function frameBody(now){
+  qualTick(now-last);
   const dtR=Math.max(0,Math.min(100,now-last)); last=Math.max(last,now);
   if(S.playing){ const dts=dtR/1000*S.speeds[S.speedIdx]; S.simT+=dts*1000; stepVort(dts); }
   simSec=S.simT/1000; // 暫停時拖時間軸也要跟著換風場時間
@@ -1487,7 +1525,9 @@ S.voice=true;
 // 檔名是句子的 FNV-1a 雜湊（UTF-16），跟 tools/build_voice.py 的 text_key() 相同
 const textKey=s=>{ let h=0x811c9dc5; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,0x01000193)>>>0; } return h.toString(16).padStart(8,'0'); };
 let VOICES=[], voiceId=''; try{ voiceId=localStorage.getItem('windglobe-voice3')||''; }catch(e){}
-const curVoice=()=>VOICES.find(v=>v.id===voiceId)||VOICES[0]||null;
+// 這個語言可以用的聲音（data/voices.json 的 lang；簡體中文也用中文聲音）
+const VLANG=I18N.zh?'zh':I18N.LANG, langVoices=()=>VOICES.filter(v=>(v.lang||'zh')===VLANG);
+const curVoice=()=>{ const vs=langVoices(); return vs.find(v=>v.id===voiceId)||vs[0]||null; };
 let sayAC=null, saySrc=null, sayTok=0; const clipCache=new Map();
 function sayCtx(){ if(!sayAC){ try{ sayAC=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; } } if(sayAC.state==='suspended') sayAC.resume().catch(()=>{}); return sayAC; }
 // iPhone 要在使用者點一下時先叫醒聲音，之後計時器觸發的語音才播得出來
@@ -1498,26 +1538,27 @@ async function clipBuf(v,text){
   clipCache.set(k,p); if(clipCache.size>80) clipCache.delete(clipCache.keys().next().value); return p;
 }
 // 裝置內建語音（備用）：挑台灣女生的聲音，音調調高一點
-const VOICE_PREF=[/HsiaoYu/i,/HsiaoChen/i,/Yating/i,/Hanhan/i,/Mei-?Jia/i,/Tingting|Ting-Ting/i,/Xiaoxiao/i];
+const VOICE_PREF=I18N.zh?[/HsiaoYu/i,/HsiaoChen/i,/Yating/i,/Hanhan/i,/Mei-?Jia/i,/Tingting|Ting-Ting/i,/Xiaoxiao/i]:[/Ana|Aria|Jenny|Samantha/i,/Nanami|Kyoko/i,/SunHi|Yuna/i];
 let TTSV=null;
-function pickTTS(){ const vs=('speechSynthesis' in window)?speechSynthesis.getVoices().filter(v=>/^(zh|cmn)/i.test(v.lang)&&!/^Google/i.test(v.name)):[];
-  TTSV=null; for(const re of VOICE_PREF){ TTSV=vs.find(v=>re.test(v.name)&&/TW|Hant/i.test(v.lang))||vs.find(v=>re.test(v.name)); if(TTSV) break; } if(!TTSV) TTSV=vs.find(v=>/TW/i.test(v.lang))||vs[0]||null; }
+function pickTTS(){ const pre=I18N.zh?/^(zh|cmn)/i:new RegExp('^'+I18N.LANG,'i'), vs=('speechSynthesis' in window)?speechSynthesis.getVoices().filter(v=>pre.test(v.lang)&&!/^Google/i.test(v.name)):[];
+  TTSV=null; for(const re of VOICE_PREF){ TTSV=vs.find(v=>re.test(v.name)&&(!I18N.zh||/TW|Hant/i.test(v.lang)))||vs.find(v=>re.test(v.name)); if(TTSV) break; } if(!TTSV) TTSV=vs.find(v=>v.lang.replace('_','-').toLowerCase()===I18N.locale.toLowerCase())||vs[0]||null; }
 if('speechSynthesis' in window){ pickTTS(); speechSynthesis.addEventListener('voiceschanged',pickTTS); }
-function sayTTS(text){ if(!('speechSynthesis' in window)) return; try{ const u=new SpeechSynthesisUtterance(text); u.lang=TTSV?TTSV.lang:'zh-TW'; if(TTSV) u.voice=TTSV; u.pitch=1.6; u.rate=1.05; speechSynthesis.speak(u); }catch(e){} }
+function sayTTS(text){ if(!('speechSynthesis' in window)) return; try{ const u=new SpeechSynthesisUtterance(text); u.lang=TTSV?TTSV.lang:I18N.locale; if(TTSV) u.voice=TTSV; u.pitch=1.6; u.rate=1.05; speechSynthesis.speak(u); }catch(e){} }
 function sayStop(){ sayTok++; if(saySrc){ try{ saySrc.stop(); }catch(e){} saySrc=null; } if('speechSynthesis' in window) speechSynthesis.cancel(); }
 async function say(text){
   if(!S.voice) return; sayStop(); const tok=sayTok, v=curVoice(), ac=v&&sayCtx();
-  const buf=ac?await clipBuf(v,text):null; if(tok!==sayTok) return;
+  // 中文聲音的錄音檔是用繁體原文錄的：簡體介面唸的句子換回原文找檔案
+  const buf=ac?await clipBuf(v,(v.lang||'zh')==='zh'?I18N.REV.get(text)||text:text):null; if(tok!==sayTok) return;
   if(!buf){ if(v) console.info('沒有錄好的語音，改用內建語音：',text); sayTTS(text); return; }
   const s=ac.createBufferSource(); s.buffer=buf; s.connect(ac.destination); s.start(); saySrc=s; s.onended=()=>{ if(saySrc===s) saySrc=null; };
 }
 function fillVoiceSel(){ const sel=$('#gmVoiceSel'); if(!sel) return; sel.innerHTML='';
   // 分成女生、男生兩組（data/voices.json 的 g）
-  for(const [g,lbl] of [['girl','女生'],['boy','男生']]){ const vs=VOICES.filter(v=>(v.g||'girl')===g); if(!vs.length) continue;
+  for(const [g,lbl] of [['girl',tr('女生')],['boy',tr('男生')]]){ const vs=langVoices().filter(v=>(v.g||'girl')===g); if(!vs.length) continue;
     const og=document.createElement('optgroup'); og.label=lbl;
-    for(const v of vs){ const o=document.createElement('option'); o.value=v.id; o.textContent=`${v.name}・${v.desc}`; if(v===curVoice()) o.selected=true; og.append(o); }
+    for(const v of vs){ const o=document.createElement('option'); o.value=v.id; o.textContent=`${trName(v.name)}・${tr(v.desc)}`; if(v===curVoice()) o.selected=true; og.append(o); }
     sel.append(og); }
-  sel.hidden=!VOICES.length; }
+  sel.hidden=!langVoices().length; }
 getJSON('data/voices.json').then(d=>{ VOICES=d.voices||[]; fillVoiceSel(); }).catch(()=>{});
 let STARS=0; try{STARS=+localStorage.getItem('windglobe-stars')||0;}catch(e){}
 function addStar(n=1){ STARS+=n; try{localStorage.setItem('windglobe-stars',STARS);}catch(e){} updStars(); }
@@ -1532,7 +1573,7 @@ let STICK=new Set(); try{STICK=new Set(JSON.parse(localStorage.getItem('windglob
 function addSticker(f){
   if(STICK.has(f.id)) return;
   STICK.add(f.id); try{localStorage.setItem('windglobe-stickers',JSON.stringify([...STICK]));}catch(e){}
-  toast(`得到新貼紙：${f.n.replace(/（.*?）/,'')}！（${STICK.size}/${FARMS.length}）`); say(`得到新貼紙，${f.n.replace(/（.*?）/,'')}`);
+  toast(tr('得到新貼紙：{f}！（{a}/{b}）',{f:f.ns,a:STICK.size,b:FARMS.length})); say(tr('得到新貼紙，{f}',{f:f.ns}));
   updBook();
 }
 function stickerSVG(k){ const c=k==='off'?'#2f7ad6':k==='float'?'#8a5cd6':k==='ret'?'#8a96a3':'#0b8a9a';
@@ -1543,7 +1584,7 @@ function updBook(){
   for(const f of FARMS){
     const got=STICK.has(f.id), b=document.createElement('button'); b.className='stk'+(got?'':' locked');
     b.innerHTML=got?stickerSVG(f.st==='ret'?'ret':f.k)+'<span></span>':'<div class="q">？</div><span></span>';
-    b.querySelector('span').textContent=got?f.n.replace(/（.*?）/,''):f.c.split('・')[0];
+    b.querySelector('span').textContent=got?f.ns:f.c.split('・')[0];
     if(got) b.onclick=()=>{ $('#book').hidden=true; userTook(); select(f,true); };
     grid.appendChild(b);
   }
@@ -1558,9 +1599,9 @@ document.addEventListener('click',e=>{ if(!gmenu.hidden&&!gmenu.contains(e.targe
 $('#gmFind').onclick=()=>{ gmenu.hidden=true; startFind(); };
 $('#gmBlow').onclick=()=>{ gmenu.hidden=true; const f=S.sel&&S.sel.tur?S.sel:byId.gch; userTook(); select(f,true); setTimeout(()=>open3D(specForFarm(f)),600); };
 $('#gmBook').onclick=()=>{ gmenu.hidden=true; updBook(); $('#book').hidden=false; };
-$('#gmVoice').onclick=()=>{ S.voice=!S.voice; if(!S.voice) sayStop(); $('#gmVoice').setAttribute('aria-pressed',S.voice); $('#gmVoice').textContent=S.voice?'語音朗讀：開':'語音朗讀：關'; };
+$('#gmVoice').onclick=()=>{ S.voice=!S.voice; if(!S.voice) sayStop(); $('#gmVoice').setAttribute('aria-pressed',S.voice); $('#gmVoice').textContent=tr(S.voice?'語音朗讀：開':'語音朗讀：關'); };
 $('#gmVoiceSel').onchange=e=>{ voiceId=e.target.value; try{localStorage.setItem('windglobe-voice3',voiceId);}catch(err){} $('#gmVoiceTry').click(); };
-$('#gmVoiceTry').onclick=()=>{ const v=S.voice; S.voice=true; say('你好，我是風車地球的小幫手！一起來看風車吧！'); S.voice=v; };
+$('#gmVoiceTry').onclick=()=>{ const v=S.voice; S.voice=true; say(tr('你好，我是風車地球的小幫手！一起來看風車吧！')); S.voice=v; };
 
 /* ================= 遊戲一：找找看 ================= */
 const GT=[[158,'台灣'],[392,'日本'],[156,'中國'],[840,'美國'],[36,'澳洲'],[826,'英國'],[76,'巴西'],[356,'印度'],[10,'南極洲'],[124,'加拿大'],[276,'德國'],[818,'埃及'],[404,'肯亞'],[710,'南非'],[643,'俄羅斯'],[484,'墨西哥'],[208,'丹麥'],[578,'挪威'],[32,'阿根廷'],[410,'韓國'],[608,'菲律賓'],[724,'西班牙'],[250,'法國'],[554,'紐西蘭']];
@@ -1573,8 +1614,8 @@ function startFind(){
 }
 function showRound(){
   G.tries=0; G.wait=false; const t=G.list[G.i];
-  $('#gq').textContent=`第 ${G.i+1}/${G.list.length} 題：${t[1]}在哪裡？點點看！`; $('#gs').textContent='⭐ '+G.score; $('#ghint').textContent='轉動地球，找到後點一下。（地名先藏起來囉）';
-  say(`找找看，${t[1]}在哪裡？`);
+  $('#gq').textContent=tr('第 {i}/{n} 題：{p}在哪裡？點點看！',{i:G.i+1,n:G.list.length,p:trName(t[1])}); $('#gs').textContent='⭐ '+G.score; $('#ghint').textContent=tr('轉動地球，找到後點一下。（地名先藏起來囉）');
+  say(tr('找找看，{p}在哪裡？',{p:trName(t[1])}));
 }
 function endFind(){ G.on=false; G.mark=null; $('#gbar').hidden=true; applyLabelVis(); gameResume(); }
 // 玩遊戲時先關掉背景音樂和白噪音，遊戲結束再恢復原本的狀態
@@ -1584,13 +1625,13 @@ function gameResume(){ if(!pausedAV) return; const p=pausedAV; pausedAV=null; if
 function bearingName(a,b){
   const p1=a[1]*D2R,p2=b[1]*D2R,dl=(b[0]-a[0])*D2R;
   const th=Math.atan2(Math.sin(dl)*Math.cos(p2),Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl))/D2R;
-  return ['北','東北','東','東南','南','西南','西','西北'][Math.round(((th+360)%360)/45)%8];
+  return ['北','東北','東','東南','南','西南','西','西北'][Math.round(((th+360)%360)/45)%8]; // 原文，顯示時再翻譯
 }
 function nextRound(){
   G.i++;
   if(G.i>=G.list.length){
-    $('#gq').textContent=`完成！你找到了 ${G.score} 個地方`; $('#ghint').textContent='按「結束」回到地球，或從小遊戲再玩一次。';
-    say(`完成了！你找到了 ${G.score} 個地方，好厲害！`); confetti($('#map')); G.wait=true; return;
+    $('#gq').textContent=tr('完成！你找到了 {n} 個地方',{n:G.score}); $('#ghint').textContent=tr('按「結束」回到地球，或從小遊戲再玩一次。');
+    say(tr('完成了！你找到了 {n} 個地方，好厲害！',{n:G.score})); confetti($('#map')); G.wait=true; return;
   }
   showRound();
 }
@@ -1602,18 +1643,18 @@ function gameClick(lon,lat){
   if(ok){
     G.score++; addStar(); $('#gs').textContent='⭐ '+G.score;
     const farms=FARMS.filter(x=>x.c.startsWith(t[1]));
-    const msg=farms.length?`答對了！${t[1]}有「${farms[0].n.replace(/（.*?）/,'')}」${farms.length>1?`等 ${farms.length} 座風場`:''}。`:`答對了！這裡是${t[1]}。`;
+    const msg=farms.length?tr('答對了！{p}有「{f}」{more}。',{p:trName(t[1]),f:farms[0].ns,more:farms.length>1?tr('等 {n} 座風場',{n:farms.length}):''}):tr('答對了！這裡是{p}。',{p:trName(t[1])});
     $('#ghint').textContent=msg; say(msg); confetti($('#map'));
     G.wait=true; flyTo(f.anchor[0],Math.max(-70,Math.min(70,f.anchor[1])),t[0]===158?6:2.2,1600);
     setTimeout(nextRound,4200);
   }else{
     G.tries++;
     if(G.tries>=3){
-      const m=`${t[1]}在這裡！我們一起看看。`; $('#ghint').textContent=m; say(m); G.wait=true;
+      const m=tr('{p}在這裡！我們一起看看。',{p:trName(t[1])}); $('#ghint').textContent=m; say(m); G.wait=true;
       flyTo(f.anchor[0],Math.max(-70,Math.min(70,f.anchor[1])),t[0]===158?6:2.2,1600); setTimeout(nextRound,4200);
     }else{
       const dir=bearingName([lon,lat],f.anchor), d=Math.round(d3.geoDistance([lon,lat],f.anchor)*6371/100)*100;
-      const m=`不是這裡喔！${t[1]}在你點的地方的${dir}邊，大約 ${d.toLocaleString()} 公里。`; $('#ghint').textContent=m; say(`不是這裡喔，再往${dir}邊找找`);
+      const m=tr('不是這裡喔！{p}在你點的地方的{d}邊，大約 {km} 公里。',{p:trName(t[1]),d:tr(dir),km:d.toLocaleString(I18N.locale)}); $('#ghint').textContent=m; say(tr('不是這裡喔，再往{d}邊找找',{d:tr(dir)}));
     }
   }
 }
@@ -1661,37 +1702,79 @@ async function doCheckIn(lon,lat,acc){
   const near=nearPts(lon,lat,2);
   if(!near.length){
     const far=nearPts(lon,lat,80);
-    const msg=far.length?`你附近 2 公里內沒有風車，最近的一支在 ${far[0].d.toFixed(1)} 公里外，走近一點再打卡！`:'你附近沒有風車資料，到有風車的地方再打卡吧！';
-    toast('📍 '+msg,5000); say(far.length?'你附近 2 公里內沒有風車，走近一點再打卡！':msg); return;
+    const msg=far.length?tr('你附近 2 公里內沒有風車，最近的一支在 {d} 公里外，走近一點再打卡！',{d:far[0].d.toFixed(1)}):tr('你附近沒有風車資料，到有風車的地方再打卡吧！');
+    toast('📍 '+msg,5000); say(far.length?tr('你附近 2 公里內沒有風車，走近一點再打卡！'):msg); return;
   }
   const t=near[0], r=regionAtLL(t.lon,t.lat);
   const key=r?r.key:`p${t.lon.toFixed(3)},${t.lat.toFixed(3)}`, name=r?r.name:'這裡的風車';
   const done=CHECKS.find(c=>c.key===key||(Math.abs(c.lon-t.lon)<0.002&&Math.abs(c.lat-t.lat)<0.002));
   flyTo(t.lon,t.lat,0,2200,0.5*Math.min(W,H)/3);
-  if(done){ toast(`📍 ${name}已經打過卡囉！這裡的風車已經是七彩版了`,4000); return; }
+  if(done){ toast('📍 '+tr('{n}已經打過卡囉！這裡的風車已經是七彩版了',{n:trName(name)}),4000); return; }
   const m=1;
   CHECKS.push({key,name,lon:t.lon,lat:t.lat,t:Date.now(),m,acc:Math.round(acc||0)});
   applySkins(); addStar(); confetti($('#map')); updBook();
-  const msg=`打卡成功！${name}的風車全部變成七彩版了！`;
-  toast('📍 '+msg,5000); say('打卡成功！這裡的風車全部變成七彩版了！');
+  const msg=tr('打卡成功！{n}的風車全部變成七彩版了！',{n:trName(name)});
+  toast('📍 '+msg,5000); say(tr('打卡成功！這裡的風車全部變成七彩版了！'));
+}
+
+/* ---------- 右側欄收起／打開（記在這台裝置） ---------- */
+function setSide(on){ $('#stage').classList.toggle('side-off',!on); $('#sideShow').hidden=on; try{localStorage.setItem('windglobe-side',on?'1':'0');}catch(e){} }
+$('#sideHide').onclick=()=>setSide(false);
+$('#sideShow').onclick=()=>setSide(true);
+try{ if(localStorage.getItem('windglobe-side')==='0') setSide(false); }catch(e){}
+
+/* ---------- 定位我的位置：飛過去，畫一個會呼吸的藍點「你在這裡」＋誤差範圍圈 ---------- */
+let ME=null;
+function locateMe(){
+  const b=$('#bLocate');
+  if(!navigator.geolocation){ toast(tr('這個瀏覽器沒辦法定位，換手機的瀏覽器試試看')); return; }
+  b.classList.remove('found'); b.classList.add('busy');
+  navigator.geolocation.getCurrentPosition(p=>{
+    b.classList.remove('busy'); void b.offsetWidth; b.classList.add('found');
+    const lon=p.coords.longitude, lat=p.coords.latitude, acc=p.coords.accuracy||0;
+    ME={lon,lat,acc,t:performance.now()};
+    userTook(); if(S.zen) setZen(false);
+    flyTo(lon,lat,0,1800,Math.min(W,H)/Math.max(8,acc/1000*6));
+    const near=nearPts(lon,lat,80);
+    const msg=near.length?(near[0].d<2?tr('你在這裡！附近 2 公里內有 {n} 支風車，可以按「打卡」喔',{n:near.filter(x=>x.d<2).length}):tr('你在這裡！離你最近的風車在 {d} 公里外',{d:near[0].d.toFixed(1)})):tr('你在這裡！附近 80 公里內沒有風車');
+    toast('📍 '+msg+(acc>3000?tr('（定位誤差約 {d} 公里）',{d:Math.round(acc/1000)}):''),5000);
+  },e=>{
+    b.classList.remove('busy');
+    toast(tr(e.code===1?'沒有允許使用位置（可以在瀏覽器的網站設定裡打開）':'定位失敗，到空曠一點的地方再試一次'),5000);
+  },{enableHighAccuracy:true,timeout:20000,maximumAge:30000});
+}
+$('#bLocate').onclick=locateMe;
+function drawMe(g){
+  if(!ME) return; const q=project(ME.lon,ME.lat); if(!q) return;
+  const now=performance.now(), blue='#4A8FF5';
+  const ar=ME.acc/1000*kmPx; // 誤差範圍（公尺換成畫面像素）
+  if(ar>14&&ar<Math.max(W,H)){ g.fillStyle='rgba(74,143,245,.12)'; g.strokeStyle='rgba(74,143,245,.45)'; g.lineWidth=1.5; g.beginPath(); g.arc(q[0],q[1],ar,0,TAU); g.fill(); g.stroke(); }
+  for(let k=0;k<2;k++){ const ph=((now/1600)+k*0.5)%1; g.strokeStyle=`rgba(74,143,245,${0.55*(1-ph)})`; g.lineWidth=3; g.beginPath(); g.arc(q[0],q[1],10+ph*30,0,TAU); g.stroke(); }
+  g.fillStyle='#fff'; g.beginPath(); g.arc(q[0],q[1],11,0,TAU); g.fill();
+  g.fillStyle=blue; g.beginPath(); g.arc(q[0],q[1],7.5,0,TAU); g.fill();
+  g.font='800 12px "Noto Sans TC",sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+  const meT=tr('你在這裡'), tw=g.measureText(meT).width+16, ly=q[1]-26;
+  g.fillStyle=blue; g.beginPath(); g.roundRect?g.roundRect(q[0]-tw/2,ly-10,tw,20,10):g.rect(q[0]-tw/2,ly-10,tw,20); g.fill();
+  g.beginPath(); g.moveTo(q[0]-5,ly+9); g.lineTo(q[0]+5,ly+9); g.lineTo(q[0],ly+15); g.fill();
+  g.fillStyle='#fff'; g.fillText(meT,q[0],ly+0.5); g.textAlign='start';
 }
 $('#bCheck').onclick=()=>{
-  if(!navigator.geolocation){ toast('這個瀏覽器沒辦法定位，換手機的瀏覽器試試看'); return; }
-  toast('📍 定位中⋯（請允許網頁使用你的位置）',4000);
+  if(!navigator.geolocation){ toast(tr('這個瀏覽器沒辦法定位，換手機的瀏覽器試試看')); return; }
+  toast(tr('📍 定位中⋯（請允許網頁使用你的位置）'),4000);
   navigator.geolocation.getCurrentPosition(
-    p=>{ if(p.coords.accuracy>3000) toast(`定位誤差約 ${Math.round(p.coords.accuracy/1000)} 公里，可能不夠準，到戶外再試一次會比較好`,4000);
+    p=>{ if(p.coords.accuracy>3000) toast(tr('定位誤差約 {d} 公里，可能不夠準，到戶外再試一次會比較好',{d:Math.round(p.coords.accuracy/1000)}),4000);
       doCheckIn(p.coords.longitude,p.coords.latitude,p.coords.accuracy); },
-    e=>toast(e.code===1?'沒有允許使用位置，所以沒辦法打卡（可以在瀏覽器的網站設定裡打開）':'定位失敗，到空曠一點的地方再試一次',5000),
+    e=>toast(tr(e.code===1?'沒有允許使用位置，所以沒辦法打卡（可以在瀏覽器的網站設定裡打開）':'定位失敗，到空曠一點的地方再試一次'),5000),
     {enableHighAccuracy:true,timeout:20000,maximumAge:60000});
 };
 function updChecks(){
   const el=$('#bkChecks'); if(!el) return; el.innerHTML='';
-  $('#bkCheckN').textContent=CHECKS.length?`（${CHECKS.length} 個地方）`:'';
-  if(!CHECKS.length){ el.innerHTML='<p class="bk-none">還沒有打卡紀錄。到有風車的地方，按地圖右邊的「📍 打卡」，那裡的風車就會變成七彩版！</p>'; return; }
+  $('#bkCheckN').textContent=CHECKS.length?tr('（{n} 個地方）',{n:CHECKS.length}):'';
+  if(!CHECKS.length){ el.innerHTML='<p class="bk-none"></p>'; el.firstChild.textContent=tr('還沒有打卡紀錄。到有風車的地方，按地圖右邊的「📍 打卡」，那裡的風車就會變成七彩版！'); return; }
   for(const c of CHECKS.slice().reverse()){
     const b=document.createElement('button'), d=new Date(c.t); b.className='ck';
     b.innerHTML='<b></b><span></span><small></small>';
-    b.querySelector('b').textContent='📍 '+c.name; b.querySelector('span').textContent='七彩版';
+    b.querySelector('b').textContent='📍 '+trName(c.name); b.querySelector('span').textContent=tr('七彩版');
     b.querySelector('small').textContent=`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
     b.onclick=()=>{ $('#book').hidden=true; userTook(); flyTo(c.lon,c.lat,0,2200,0.5*Math.min(W,H)/3); };
     el.append(b);
@@ -1699,10 +1782,14 @@ function updChecks(){
 }
 
 /* ================= 遊戲三：風車點點樂（點風車彈 Do Re Mi、照順序連線數數字或 ABC） ================= */
-const DOT={on:false,mode:'num',pts:[],next:0,done:false,glows:[],hintT:0,ac:null};
+const DOT={seq:0,on:false,mode:'num',n:10,pts:[],next:0,done:false,glows:[],hintT:0,ac:null,r:16};
+try{ const d=JSON.parse(localStorage.getItem('windglobe-dots')||'null'); if(d&&['num','abc'].includes(d.m)&&[10,26,50,100].includes(d.n)){ DOT.mode=d.m; DOT.n=d.m==='abc'?26:d.n; } }catch(e){} // A–J 已取消，存過的 A–J 改成 A–Z
 const NOTE_HZ=[261.63,293.66,329.63,349.23,392.00,440.00,493.88,523.25,587.33,659.25,698.46,783.99];
 const SOLFA=['Do','Re','Mi','Fa','So','La','Si','Do','Re','Mi','Fa','So'];
 const CN_NUM='一二三四五六七八九十';
+// 中文數字（1～100），唸數字用；tools/build_voice.py 的 cn_num() 要一模一樣
+const cnNum=n=>{ const d='一二三四五六七八九'; if(n===100) return '一百'; if(n<=10) return CN_NUM[n-1]; const t=Math.floor(n/10), o=n%10; return (t===1?'':d[t-1])+'十'+(o?d[o-1]:''); };
+const dotSay=i=>DOT.mode==='abc'?String.fromCharCode(65+i):I18N.zh?cnNum(i+1):String(i+1); // 外語直接唸阿拉伯數字
 function dotNote(i,dur=0.9){
   try{
     if(!DOT.ac) DOT.ac=new (window.AudioContext||window.webkitAudioContext)();
@@ -1724,45 +1811,70 @@ function dotBuzz(){
     g.gain.setValueAtTime(0.05,t); g.gain.exponentialRampToValueAtTime(0.0001,t+0.25); o.connect(g).connect(ac.destination); o.start(t); o.stop(t+0.3);
   }catch(e){}
 }
+// 連連看用的飛行：k＝每公里幾個畫面像素（MapLibre 一格 512 像素），停穩後才挑點；新的飛行會取消舊的
+function dotFly(lon,lat,k,dur){
+  const seq=++DOT.seq, z=Math.log2(k*40075.016686*Math.cos(lat*D2R)/512);
+  fly=true; map.flyTo({center:[lon,lat],zoom:Math.max(1,Math.min(16,z)),pitch:0,bearing:0,duration:dur,essential:true});
+  const go=()=>{ if(seq!==DOT.seq||!DOT.on||DOT.pts.length) return; if(map.isMoving()){ setTimeout(go,300); return; } vv++; setTimeout(()=>{ if(seq===DOT.seq&&DOT.on&&!DOT.pts.length) pickDots(); },350); };
+  map.once('moveend',()=>setTimeout(go,250)); setTimeout(go,dur+2500);
+}
 const dotLabel=i=>DOT.mode==='abc'?String.fromCharCode(65+i):String(i+1);
-function startDots(mode){
+function startDots(mode,n){
   select(null); if(S.tour) setTour(false); if(S.zen) setZen(false); if(G.on) endFind(); gamePause();
-  DOT.on=true; DOT.mode=mode||DOT.mode; DOT.pts=[]; DOT.next=0; DOT.done=false; DOT.glows=[];
-  $('#dbar').hidden=false; for(const b of $('#dmodes').children) b.setAttribute('aria-pressed',b.dataset.m===DOT.mode);
-  $('#dq').textContent='找風車中⋯'; $('#dhint').textContent='';
-  const enough=kmPx>=0.8&&WC.mode===2&&WC.list.length/4+tPick.length>=12;
-  if(enough) setTimeout(pickDots,60);
+  DOT.on=true; DOT.tries=0; DOT.zoomTries=0; DOT.waits=0; DOT.mode=mode||DOT.mode; DOT.n=n||DOT.n; if(DOT.mode==='abc') DOT.n=Math.min(26,DOT.n); DOT.pts=[]; DOT.next=0; DOT.done=false; DOT.glows=[];
+  try{localStorage.setItem('windglobe-dots',JSON.stringify({m:DOT.mode,n:DOT.n}));}catch(e){}
+  applyLabelVis();
+  $('#dbar').hidden=false; for(const b of $('#dmodes').children) b.setAttribute('aria-pressed',b.dataset.m===DOT.mode&&+b.dataset.n===DOT.n);
+  $('#dq').textContent=tr('找風車中⋯'); $('#dhint').textContent='';
+  const enough=kmPx>=0.8&&WC.mode===2&&WC.list.length/4+tPick.length>=Math.max(12,DOT.n*1.5);
+  if(enough){ const seq=++DOT.seq; setTimeout(()=>{ if(seq===DOT.seq) pickDots(); },60); }
   else{ // 畫面上的風車不夠：飛到選中的風場，沒有就飛到大彰化
     const f=(S.sel&&S.sel.tur)?S.sel:byId.gch;
-    flyTo(f.lon,f.lat,0,2000,0.5*Math.min(W,H)/f.extKm);
-    const go=()=>{ if(DOT.on&&!DOT.pts.length) pickDots(); };
-    map.once('moveend',()=>setTimeout(go,400)); setTimeout(go,4000); // 備援：飛行事件沒觸發時也開始
+    dotFly(f.lon,f.lat,Math.max(2.4,0.5*Math.min(W,H)/(f.extKm*(DOT.n>=100?3.2:DOT.n>=50?2.2:1))),2000);
   }
 }
 function pickDots(){
   if(!DOT.on) return;
+  // 拉太遠時風機是一團一團的點，不是一支一支：先放大到看得到每一支風機再挑
+  if(kmPx<2.2&&(DOT.zoomTries||0)<2){ DOT.zoomTries=(DOT.zoomTries||0)+1; dotFly(cLon,cLat,2.6,1200); return; }
+  if(WC.mode!==2&&(DOT.waits||0)<10){ DOT.waits=(DOT.waits||0)+1; vv++; const seq=DOT.seq; setTimeout(()=>{ if(seq===DOT.seq) pickDots(); },200); return; } // 畫面還沒換成一支一支的風機，等一下下
   // 候選：畫面中間區域、目前畫得出來的風車（風場的與全球的）
   const cand=[];
   for(const t of tPick) cand.push([t[0],t[1],t[3].lon,t[3].lat]);
   if(WC.mode===2) for(let k=0;k<WC.list.length;k+=4){ const i=WC.list[k+2]; cand.push([WC.list[k],WC.list[k+1],WT.xy[2*i]/1e5,WT.xy[2*i+1]/1e5]); }
-  const inner=cand.filter(c=>c[0]>W*0.12&&c[0]<W*0.88&&c[1]>H*0.2&&c[1]<H*0.85);
+  const mr=$('#map').getBoundingClientRect(), br=$('#dbar').getBoundingClientRect(), top=Math.max(H*0.12,br.bottom-mr.top+18);
+  // 避開側邊欄、定位鈕、全畫面鈕底下的位置（被蓋住的號碼點不到）
+  const blocks=['.side','#bLocate','#bFs','#sideShow'].map(q=>$(q)).filter(el=>el&&!el.hidden&&getComputedStyle(el).opacity>0.1).map(el=>{ const r=el.getBoundingClientRect(); return [r.left-mr.left-18,r.top-mr.top-18,r.right-mr.left+18,r.bottom-mr.top+18]; });
+  const inner=cand.filter(c=>c[0]>W*0.06&&c[0]<W*0.94&&c[1]>top&&c[1]<H*0.9&&!blocks.some(b=>c[0]>b[0]&&c[0]<b[2]&&c[1]>b[1]&&c[1]<b[3]));
   d3.shuffle(inner);
-  const n=10, pick=[], gap=Math.max(46,Math.min(W,H)*0.09);
-  for(const c of inner){ if(pick.length>=n) break; if(pick.every(p=>Math.hypot(p[0]-c[0],p[1]-c[1])>=gap)) pick.push(c); }
-  if(pick.length<5){ $('#dq').textContent='這裡的風車太少了，換到風車多一點的地方再按一次'; return; }
-  // 依繞著中心的角度排序，連起來會是一個圈圈或星星的形狀
-  const cx=d3.mean(pick,p=>p[0]), cy=d3.mean(pick,p=>p[1]);
-  pick.sort((a,b)=>Math.atan2(a[1]-cy,a[0]-cx)-Math.atan2(b[1]-cy,b[0]-cx));
+  const n=DOT.n; let pick=[], gap=Math.max(26,Math.min(Math.max(46,Math.min(W,H)*0.09),Math.sqrt(W*H*0.5/n)*0.8));
+  while(true){ pick=[]; for(const c of inner){ if(pick.length>=n) break; if(pick.every(p=>Math.hypot(p[0]-c[0],p[1]-c[1])>=gap)) pick.push(c); }
+    if(pick.length>=n||gap<=22) break; gap=Math.max(22,gap*0.85); }
+  if(pick.length<n*0.9&&!DOT.tries){
+    DOT.tries=1; $('#dq').textContent=tr('這裡的風車不夠分散，帶你去德國北部的大風場⋯');
+    dotFly(9.3,53.55,Math.max(2.6,Math.min(W,H)/(n>=100?150:110)),2200); return;
+  }
+  if(pick.length<5){ $('#dq').textContent=tr('這裡的風車太少了，換到風車多一點的地方再按一次'); return; }
+  if(pick.length<n) toast(tr('這裡只找到 {n} 支分得開的風車，這次就連 {n} 個',{n:pick.length}),3500);
+  DOT.r=Math.max(10,Math.min(16,gap*0.4));
+  if(pick.length<=12){ // 依繞著中心的角度排序，連起來會是一個圈圈或星星的形狀
+    const cx=d3.mean(pick,p=>p[0]), cy=d3.mean(pick,p=>p[1]);
+    pick.sort((a,b)=>Math.atan2(a[1]-cy,a[0]-cx)-Math.atan2(b[1]-cy,b[0]-cx));
+  }else{ // 點很多：從左上角開始，每次走到最近的下一個，路線不會跳來跳去
+    const rest=pick.slice(), path=[]; let cur=rest.reduce((a,b)=>a[0]+a[1]<b[0]+b[1]?a:b);
+    while(rest.length){ rest.splice(rest.indexOf(cur),1); path.push(cur); if(!rest.length) break; cur=rest.reduce((a,b)=>Math.hypot(a[0]-cur[0],a[1]-cur[1])<Math.hypot(b[0]-cur[0],b[1]-cur[1])?a:b); }
+    pick=path;
+  }
   DOT.pts=pick.map((p,i)=>({lon:p[2],lat:p[3],label:dotLabel(i),lit:false,flash:0}));
   DOT.hintT=performance.now();
   updDotBar();
-  say(DOT.mode==='abc'?'連連看，從 A 開始，照順序點風車！':'連連看，從一開始，照順序點風車！');
+  say(tr(DOT.mode==='abc'?'連連看，從 A 開始，照順序點風車！':'連連看，從一開始，照順序點風車！'));
 }
 function updDotBar(){
-  if(DOT.done){ $('#dq').textContent='完成了！🎉'; $('#dhint').textContent='換個玩法，或拖曳地圖到別的風場再玩一次。'; return; }
+  if(DOT.done){ $('#dq').textContent=tr('完成了！🎉'); $('#dhint').textContent=tr('換個玩法，或拖曳地圖到別的風場再玩一次。'); return; }
   const n=DOT.pts.length, l=DOT.pts[DOT.next]?DOT.pts[DOT.next].label:'';
-  $('#dq').textContent=`連連看：${dotLabel(0)} → ${dotLabel(n-1)}，下一個是「${l}」`;
-  $('#dhint').textContent=`每點對一支，就會彈出 Do Re Mi 的下一個音（${DOT.next}/${n}）`;
+  $('#dq').textContent=tr('連連看：{a} → {b}，下一個是「{l}」',{a:dotLabel(0),b:dotLabel(n-1),l});
+  $('#dhint').textContent=tr('每點對一支，就會彈出 Do Re Mi 的下一個音（{i}/{n}）',{i:DOT.next,n});
 }
 // 平常點任何一支風車都會發出一個音（畫面越上面越高），並閃一下霓虹光
 function tapNote(t,y){
@@ -1776,24 +1888,27 @@ function dotClick(x,y){
   DOT.pts.forEach((p,k)=>{ const q=project(p.lon,p.lat); if(!q) return; const d=Math.hypot(q[0]-x,q[1]-6-y); if(d<bd){bd=d;best=k;} });
   if(best<0) return;
   if(best===DOT.next){
-    const p=DOT.pts[best]; p.lit=true; p.flash=now; dotNote(best);
-    say(DOT.mode==='abc'?p.label:(CN_NUM[best]||p.label));
+    const p=DOT.pts[best]; p.lit=true; p.flash=now; dotNote(best%8);
+    say(dotSay(best));
     DOT.next++; DOT.hintT=now;
     if(DOT.next>=DOT.pts.length){
       DOT.done=true; addStar(); confetti($('#map'));
-      DOT.pts.forEach((q,k)=>setTimeout(()=>{ dotNote(k,0.6); q.flash=performance.now(); },700+k*140));
-      setTimeout(()=>say(DOT.mode==='abc'?`太棒了！A 到 ${DOT.pts[DOT.pts.length-1].label} 全部連起來了！`:`太棒了！一到${CN_NUM[DOT.pts.length-1]||DOT.pts.length}全部連起來了！`),700+DOT.pts.length*140);
+      const step=Math.min(140,2800/DOT.pts.length);
+      DOT.pts.forEach((q,k)=>setTimeout(()=>{ dotNote(k%8,0.6); q.flash=performance.now(); },700+k*step));
+      const N=DOT.pts.length;
+      setTimeout(()=>say(N>10?tr('太棒了！全部連起來了！'):DOT.mode==='abc'?tr('太棒了！A 到 {x} 全部連起來了！',{x:DOT.pts[N-1].label}):tr('太棒了！一到{x}全部連起來了！',{x:dotSay(N-1)})),700+N*step);
     }
     updDotBar();
   }else if(!DOT.pts[best].lit){
     dotBuzz(); DOT.pts[DOT.next].flash=now;
-    const l=DOT.pts[DOT.next].label; say(`不是這個喔，找找「${DOT.mode==='abc'?l:(CN_NUM[DOT.next]||l)}」在哪裡`);
+    say(tr('不是這個喔，找找「{x}」在哪裡',{x:dotSay(DOT.next)}));
   }
 }
-function endDots(){ DOT.on=false; DOT.pts=[]; $('#dbar').hidden=true; gameResume(); }
+function endDots(){ DOT.seq++; DOT.on=false; DOT.pts=[]; $('#dbar').hidden=true; applyLabelVis(); gameResume(); }
 function drawDots(g){
   if(!DOT.on&&!DOT.glows.length) return;
   const now=performance.now(), neon=(col,blur)=>{ g.shadowColor=col; g.shadowBlur=blur; };
+  if(DOT.on&&DOT.pts.length){ g.fillStyle=C.dark?'rgba(4,10,22,.62)':'rgba(236,242,248,.68)'; g.fillRect(0,0,W,H); }
   g.save(); g.lineCap='round'; g.lineJoin='round';
   const pp=DOT.pts.map(p=>project(p.lon,p.lat));
   // 已經連好的霓虹線
@@ -1805,11 +1920,11 @@ function drawDots(g){
     g.shadowBlur=0; g.strokeStyle='#ffe6fb'; g.lineWidth=1.5; g.stroke();
   }
   // 風車上的霓虹圈與號碼：已點亮青色、下一個黃色（太久沒點會閃）、其他紫色
-  g.font='800 15px Sora,"Noto Sans TC",sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+  const R0=DOT.r; g.font=`800 ${Math.round(R0*0.9)}px Sora,"Noto Sans TC",sans-serif`; g.textAlign='center'; g.textBaseline='middle';
   DOT.pts.forEach((p,k)=>{
     const q=pp[k]; if(!q) return;
     const fl=Math.max(0,1-(now-p.flash)/700), isNext=k===DOT.next&&!DOT.done, hint=isNext&&now-DOT.hintT>6000;
-    const r=16+fl*10+(isNext?Math.sin(now/220)*2:0);
+    const r=R0+fl*10+(isNext?Math.sin(now/220)*2:0);
     neon(p.lit?'#4ff7ff':isNext?'#ffd84f':'#c48bff',p.lit?22:hint?26:12);
     g.beginPath(); g.arc(q[0],q[1]-6,r,0,TAU);
     g.strokeStyle=p.lit?'rgba(79,247,255,.95)':isNext?`rgba(255,216,79,${hint?0.6+0.4*Math.sin(now/120):0.95})`:'rgba(196,139,255,.7)';
@@ -1826,7 +1941,7 @@ function drawDots(g){
   g.restore(); g.textAlign='start';
 }
 $('#gmDots').onclick=()=>{ gmenu.hidden=true; startDots(DOT.mode); };
-$('#dmodes').onclick=e=>{ const b=e.target.closest('button'); if(b) startDots(b.dataset.m); };
+$('#dmodes').onclick=e=>{ const b=e.target.closest('button'); if(b&&b.dataset.m) startDots(b.dataset.m,+b.dataset.n); };
 $('#dend').onclick=endDots;
 
 /* ================= 背景音樂（原創，程式即時演奏） ================= */
@@ -1968,7 +2083,7 @@ function musRegion(now=performance.now()){
 // 霓虹顏色：圖鑑裡有貼紙的風場（音樂區以風場名稱命名）外框是沿著邊緣流動的七彩跑馬燈；
 // 其他區域從 10 種霓虹色裡挑，附近的區域盡量不同色
 function hsl(h,s,l){ return `hsl(${Math.round(h)},${s}%,${l}%)`; }
-const STICKER_NAMES=new Set(FARMS.map(f=>f.n.replace(/（.*?）/,'')));
+const STICKER_NAMES=new Set(FARMS.map(f=>f.n0.replace(/（.*?）/,''))); // 音樂區名稱是原文
 const NEON_PAL=[['#ff4fb0','#ffe3f3'],['#b86bff','#efe0ff'],['#3fe0ff','#dffaff'],['#4dff88','#e0ffe9'],['#ffd23f','#fff6d6'],
   ['#ff8a3d','#ffe7d6'],['#5b8cff','#e3ebff'],['#ff5a5a','#ffe0e0'],['#c6ff3f','#f3ffd9'],['#ff7cf0','#ffe6fc']];
 // 貪婪著色：依位置排序，每一區挑附近（中心距離小於兩區大小相加＋25 公里）還沒用過的顏色
@@ -2029,7 +2144,7 @@ function addMusicBorders(){
 }
 function applyMusicBorders(){
   const v=S.musb?'visible':'none';
-  $('#bMusb').setAttribute('aria-pressed',S.musb); $('#musbLbl').textContent=S.musb?'顯示':'隱藏';
+  $('#bMusb').setAttribute('aria-pressed',S.musb); $('#musbLbl').textContent=tr(S.musb?'顯示':'隱藏');
   for(const id of NEON) if(map.getLayer(id)) map.setLayoutProperty(id,'visibility',v);
 }
 // 霓虹燈效果：約 2.6 秒一次的呼吸，偶爾像接觸不良一樣快速閃一下；跑馬燈的彩虹沿著外框流動
@@ -2066,7 +2181,7 @@ function playTrack(region){
     PL.el.addEventListener('ended',()=>{ if(MUS.on&&!PL.synth) playTrack(PL.want||PL.region); });
     PL.el.addEventListener('playing',()=>{ PL.failed=0; });
     PL.el.addEventListener('error',()=>{ if(!MUS.on||PL.synth) return;
-      if(++PL.failed>=3){ PL.synth=true; toast('音樂檔讀取失敗，改用電腦合成的音樂'); setSynth(true); } else playTrack(PL.region); });
+      if(++PL.failed>=3){ PL.synth=true; toast(tr('音樂檔讀取失敗，改用電腦合成的音樂')); setSynth(true); } else playTrack(PL.region); });
   }
   const f=nextTrack(region); PL.region=region; PL.want=null;
   PL.el.src=PL.dir+encodeURIComponent(f); PL.v=0; PL.el.volume=0; PL.target=MP3_VOL*duck();
@@ -2102,7 +2217,7 @@ function setMusic(on){
   if(PL.synth||!(PL.tw.length+PL.rest.length)) setSynth(on);
   else if(on){ if(!PL.el||!PL.region) playTrack(musRegion()); else { PL.el.play().catch(()=>{}); PL.target=MP3_VOL*duck(); } }
   else PL.target=0;
-  if(on&&!setMusic.told){ setMusic.told=true; toast('♫ 霓虹圈是音樂區，有貼紙的風場是七彩跑馬燈；地圖中心移進另一圈就會換歌',4500); }
+  if(on&&!setMusic.told){ setMusic.told=true; toast(tr('♫ 霓虹圈是音樂區，有貼紙的風場是七彩跑馬燈；地圖中心移進另一圈就會換歌'),4500); }
 }
 $('#bMus').onclick=()=>setMusic(!MUS.on);
 // 音樂圈預設顯示（右邊的「音樂圈」鈕可以關掉）；資料在網頁開好後才下載
@@ -2115,7 +2230,7 @@ let THREE_P=null;
 function loadThree(){
   if(window.THREE) return Promise.resolve();
   if(THREE_P) return THREE_P;
-  THREE_P=new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';s.onload=()=>res();s.onerror=()=>{THREE_P=null;rej(new Error('3D 元件載入失敗，請檢查網路後再試一次'));};document.head.appendChild(s);});
+  THREE_P=new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';s.onload=()=>res();s.onerror=()=>{THREE_P=null;rej(new Error(tr('3D 元件載入失敗，請檢查網路後再試一次')));};document.head.appendChild(s);});
   return THREE_P;
 }
 // 3D 場景與遊戲在 assets/game3d.js（第一次進 3D 才載入）；這裡準備風機位置、真實海岸線與地形種類
@@ -2124,7 +2239,7 @@ let G3_P=null;
 function loadGame3D(){
   if(window.WindGame3D) return Promise.resolve();
   if(G3_P) return G3_P;
-  G3_P=new Promise((res,rej)=>{const s=document.createElement('script');s.src='assets/game3d.js?v=20261022t';s.onload=()=>res();s.onerror=()=>{G3_P=null;rej(new Error('3D 遊戲載入失敗，請檢查網路後再試一次'));};document.head.appendChild(s);});
+  G3_P=new Promise((res,rej)=>{const s=document.createElement('script');s.src='assets/game3d.js?v=20261028q';s.onload=()=>res();s.onerror=()=>{G3_P=null;rej(new Error(tr('3D 遊戲載入失敗，請檢查網路後再試一次')));};document.head.appendChild(s);});
   return G3_P;
 }
 function nearPts(lon,lat,km){
@@ -2146,12 +2261,12 @@ function specForFarm(f){
     pts=nearPts(f.lon,f.lat,15);
     if(!pts.length){ const far=nearPts(f.lon,f.lat,40); if(far.length) pts=nearPts(far[0].lon,far[0].lat,8); }
   }
-  return {title:f.n.replace(/（.*?）/,''),off:f.k!=='on',lon:f.lon,lat:f.lat,pts,farm:f};
+  return {title:f.ns,off:f.k!=='on',lon:f.lon,lat:f.lat,pts,farm:f};
 }
 function specHere(){
   const pts=nearPts(cLon,cLat,12);
   const off=pts.filter(p=>p.off).length>pts.length/2;
-  return {title:'這附近的風機',off,lon:cLon,lat:cLat,pts,farm:null};
+  return {title:tr('這附近的風機'),off,lon:cLon,lat:cLat,pts,farm:null};
 }
 let LANDSRC=null;
 function clipBox(pts,B){
@@ -2205,7 +2320,7 @@ function capInit(){
   document.body.append(capEl);
   capMap=new maplibregl.Map({container:capEl,style:STYLE_URL.light,center:[121,23.5],zoom:10,interactive:false,attributionControl:false,
     fadeDuration:0,pixelRatio:1,canvasContextAttributes:{preserveDrawingBuffer:true},
-    localIdeographFontFamily:'"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif'});
+    localIdeographFontFamily:{ja:'"Hiragino Sans","Yu Gothic","Meiryo",sans-serif',ko:'"Apple SD Gothic Neo","Malgun Gothic",sans-serif','zh-Hans':'"PingFang SC","Microsoft YaHei",sans-serif'}[I18N.LANG]||'"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif'});
   capReady=new Promise(res=>capMap.once('style.load',()=>{
     for(const l of capMap.getStyle().layers){
       if(l.type!=='symbol') continue;
@@ -2261,14 +2376,129 @@ async function captureGround(lon0,lat0,cl,halfM,sea,near){
   }
   return {far,near:nearShot,buildings};
 }
+/* ---------- 實景重建：空照圖地面、真實地形高度、建築、樹林、道路，以及「街景視角」站的位置 ---------- */
+// 台灣用內政部國土測繪中心正射影像（約 0.5 公尺解析度），其他地方用 Sentinel-2 衛星圖（約 10 公尺）
+const PHOTO_TW_TILES=['https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{y}/{x}'];
+const inTW=(lon,lat)=>lon>116.2&&lon<123.6&&lat>20.4&&lat<26.8;
+function capPhoto(on,lon,lat){
+  if(!capMap.getSource('cap-photo')){
+    capMap.addSource('cap-s2',{type:'raster',tiles:S2_TILES,tileSize:256,maxzoom:14});
+    capMap.addSource('cap-photo',{type:'raster',tiles:PHOTO_TW_TILES,tileSize:256,minzoom:7,maxzoom:19,bounds:[116.2,20.4,123.6,26.8]});
+    capMap.addLayer({id:'cap-s2',type:'raster',source:'cap-s2',layout:{visibility:'none'},paint:{'raster-fade-duration':0}});
+    capMap.addLayer({id:'cap-photo',type:'raster',source:'cap-photo',layout:{visibility:'none'},paint:{'raster-fade-duration':0}});
+  }
+  capMap.setLayoutProperty('cap-s2','visibility',on?'visible':'none');
+  capMap.setLayoutProperty('cap-photo','visibility',on&&inTW(lon,lat)?'visible':'none');
+}
+// 地形高度格點：Mapterhorn 高程圖磚（terrarium 編碼，512 像素，最細到 z12，約 19 公尺一格）
+async function demGrid(lon0,lat0,cl,half,N=161){
+  const z=12, n=2**z, toX=lon=>(lon+180)/360*n, toY=lat=>{ const s=Math.sin(lat*D2R); return (0.5-Math.log((1+s)/(1-s))/(4*Math.PI))*n; };
+  const dLon=half/(111320*cl), dLat=half/110574;
+  const tx0=Math.floor(toX(lon0-dLon)), tx1=Math.floor(toX(lon0+dLon)), ty0=Math.floor(toY(lat0+dLat)), ty1=Math.floor(toY(lat0-dLat));
+  const tiles=new Map(), jobs=[];
+  for(let tx=tx0;tx<=tx1;tx++) for(let ty=ty0;ty<=ty1;ty++) jobs.push((async()=>{
+    try{
+      const r=await fetch(DEM_TILES[0].replace('{z}',z).replace('{x}',tx).replace('{y}',ty)); if(!r.ok) return;
+      const bm=await createImageBitmap(await r.blob()), c=document.createElement('canvas'); c.width=bm.width; c.height=bm.height;
+      const g=c.getContext('2d',{willReadFrequently:true}); g.drawImage(bm,0,0); tiles.set(tx+','+ty,{w:bm.width,d:g.getImageData(0,0,bm.width,bm.height).data});
+    }catch(e){}
+  })());
+  await Promise.all(jobs);
+  if(!tiles.size) return null;
+  const h=new Float32Array(N*N), step=2*half/(N-1);
+  for(let j=0;j<N;j++) for(let i=0;i<N;i++){
+    const x=-half+i*step, zz=-half+j*step, lon=lon0+x/(111320*cl), lat=lat0-zz/110574, X=toX(lon), Y=toY(lat), t=tiles.get(Math.floor(X)+','+Math.floor(Y));
+    let v=0; if(t){ const px=Math.min(t.w-1,Math.floor((X-Math.floor(X))*t.w)), py=Math.min(t.w-1,Math.floor((Y-Math.floor(Y))*t.w)), k=(py*t.w+px)*4; v=t.d[k]*256+t.d[k+1]+t.d[k+2]/256-32768; }
+    h[j*N+i]=Math.max(0,v); // 海面以下當成 0
+  }
+  return {N,half,h};
+}
+// 多邊形裡均勻撒點（種樹用）
+function scatterIn(rings,toXZ,every,max,out){
+  const ring=rings[0]; if(!ring||ring.length<4) return;
+  const P=ring.map(toXZ); let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; for(const p of P){ x0=Math.min(x0,p[0]); x1=Math.max(x1,p[0]); z0=Math.min(z0,p[1]); z1=Math.max(z1,p[1]); }
+  const ins=(x,z)=>{ let c=false; for(let i=0,j=P.length-1;i<P.length;j=i++){ const a=P[i],b=P[j]; if(((a[1]>z)!==(b[1]>z))&&(x<(b[0]-a[0])*(z-a[1])/(b[1]-a[1])+a[0])) c=!c; } return c; };
+  for(let x=x0+rnd()*every;x<x1;x+=every) for(let z=z0+rnd()*every;z<z1;z+=every){ if(out.length>=max) return; const jx=x+(rnd()-0.5)*every*0.8, jz=z+(rnd()-0.5)*every*0.8; if(ins(jx,jz)) out.push([jx,jz,0.7+rnd()*0.7]); }
+}
+async function captureReal(lon0,lat0,cl,R,dense,pts){
+  await capInit(); capWater(false); capPhoto(false,lon0,lat0);
+  const toXZ=c=>[(c[0]-lon0)*111320*cl,-(c[1]-lat0)*110574];
+  // 1. 向量圖磚：風機最密集處附近 3 公里見方的建築、樹林、道路（離岸風場等一下再抓岸邊站的地方）
+  const buildings=[], seen=new Set(), trees=[], roads=[], roadLines=[];
+  const grab=async(glon,glat)=>{
+    capMap.jumpTo({center:[glon,glat],zoom:capZoom(3000,glat),bearing:0,pitch:0});
+    await capIdle();
+    // 圖磚還沒載完時查不到東西：最多再等兩次
+    for(let k=0;k<2&&!capMap.querySourceFeatures('openmaptiles',{sourceLayer:'transportation'}).length;k++) await capIdle(8000);
+    for(const f of capMap.querySourceFeatures('openmaptiles',{sourceLayer:'building'})){
+      const id=f.id!=null?f.id:JSON.stringify(f.geometry.coordinates[0]&&f.geometry.coordinates[0][0]);
+      if(seen.has(id)) continue; seen.add(id);
+      const polys=f.geometry.type==='Polygon'?[f.geometry.coordinates]:f.geometry.type==='MultiPolygon'?f.geometry.coordinates:[];
+      const h=+f.properties.render_height||+f.properties.height||7, h0=+f.properties.render_min_height||0;
+      for(const p of polys){ const ring=p[0]; if(ring&&ring.length>=4) buildings.push({h:Math.max(3,h-h0),ring:ring.map(toXZ)}); }
+      if(buildings.length>=3000) break;
+    }
+    for(const f of capMap.querySourceFeatures('openmaptiles',{sourceLayer:'landcover'})){
+      if(!/wood|forest|scrub/.test(f.properties.class||'')) continue;
+      const polys=f.geometry.type==='Polygon'?[f.geometry.coordinates]:f.geometry.type==='MultiPolygon'?f.geometry.coordinates:[];
+      for(const p of polys) scatterIn(p,toXZ,f.properties.class==='scrub'?14:9,2500,trees);
+    }
+    for(const f of capMap.querySourceFeatures('openmaptiles',{sourceLayer:'transportation'})){
+      const cls=f.properties.class||''; if(/rail|ferry|aerialway|pier/.test(cls)) continue;
+      const lines=f.geometry.type==='LineString'?[f.geometry.coordinates]:f.geometry.type==='MultiLineString'?f.geometry.coordinates:[];
+      for(const l of lines) if(roadLines.length<1200&&l.length>=2) roadLines.push({cls,brunnel:f.properties.brunnel||'',pts:l.map(toXZ)}); // 3D 裡鋪成柏油路
+      for(const l of lines) for(let k=0;k+1<l.length;k++){ const a=toXZ(l[k]), b=toXZ(l[k+1]), d=Math.hypot(b[0]-a[0],b[1]-a[1]);
+        for(let s=0;s<d;s+=15) roads.push([a[0]+(b[0]-a[0])*s/d,a[1]+(b[1]-a[1])*s/d,cls,f.properties.brunnel==='bridge']); }
+    }
+  };
+  await grab(dense.lon,dense.lat);
+  // 2. 街景視角：在真實道路上，離最近的風機 120～450 公尺、看得到最多風機的地方，面向那群風機
+  const P=pts.map(p=>[(p.lon-lon0)*111320*cl,-(p.lat-lat0)*110574]);
+  let cam=null, best=1e9;
+  for(const r of roads){
+    let dmin=1e9; for(const p of P) dmin=Math.min(dmin,Math.hypot(p[0]-r[0],p[1]-r[1]));
+    if(dmin<120||dmin>450) continue;
+    const vis=P.filter(p=>Math.hypot(p[0]-r[0],p[1]-r[1])<1500).length;
+    const score=Math.abs(dmin-220)/40-vis*1.5+(/path|track/.test(r[2])?6:0);
+    if(score<best){ best=score; cam=r; }
+  }
+  if(!cam){ // 離岸風場：風機附近沒有路，改站在海邊離風機最近的道路上（跟 Google 街景從岸邊看出去一樣）
+    capMap.jumpTo({center:[dense.lon,dense.lat],zoom:capZoom(16000,dense.lat),bearing:0,pitch:0}); await capIdle();
+    let bd=9000;
+    for(const f of capMap.querySourceFeatures('openmaptiles',{sourceLayer:'transportation'})){
+      const cls=f.properties.class||''; if(!/primary|secondary|tertiary|minor|service|trunk/.test(cls)||f.properties.brunnel) continue;
+      const lines=f.geometry.type==='LineString'?[f.geometry.coordinates]:f.geometry.type==='MultiLineString'?f.geometry.coordinates:[];
+      for(const l of lines) for(const c of l){ const q=toXZ(c); let dmin=1e9; for(const p of P) dmin=Math.min(dmin,Math.hypot(p[0]-q[0],p[1]-q[1])); if(dmin<bd){ bd=dmin; cam=[q[0],q[1],cls,false]; } }
+    }
+    if(cam) await grab(lon0+cam[0]/(111320*cl),lat0-cam[1]/110574); // 岸邊站的地方附近的真實房子、樹、道路
+  }
+  if(!cam){ // 附近沒有道路資料：站在最密集那支風機南邊 260 公尺
+    const dx=(dense.lon-lon0)*111320*cl, dz=-(dense.lat-lat0)*110574; cam=[dx,dz+260,'',false,true]; // 第 5 個值：站在海上
+  }
+  if(cam){
+    const n15=P.filter(p=>Math.hypot(p[0]-cam[0],p[1]-cam[1])<1500), near=n15.length?n15:P, cx=near.reduce((s,p)=>s+p[0],0)/near.length, cz=near.reduce((s,p)=>s+p[1],0)/near.length;
+    const head=Math.atan2(cx-cam[0],-(cz-cam[1]))/D2R; // 方位角：北 0°、東 90°
+    cam={x:cam[0],z:cam[1],bridge:!!cam[3],sea:!!cam[4],heading:(head+360)%360,lon:lon0+cam[0]/(111320*cl),lat:lat0-cam[1]/110574};
+  }
+  // 3. 空照圖：遠景、風機附近、街景位置附近三層，越近越清楚
+  capPhoto(true,lon0,lat0);
+  const shot=async(lon,lat,span)=>{ capMap.jumpTo({center:[lon,lat],zoom:capZoom(span,lat)}); await capIdle(12000); return capShot(false,lon0,lat0,cl); };
+  const farSpan=Math.min(16000,R*2+6000);
+  const far=await shot(lon0,lat0,farSpan);
+  const mid=await shot(dense.lon,dense.lat,2600);
+  const near=cam?await shot(cam.lon,cam.lat,900):null;
+  capPhoto(false,lon0,lat0);
+  const dem=await demGrid(lon0,lat0,cl,farSpan/2);
+  return {photo:true,far,mid,near,buildings,trees,roads:roadLines,cam,dem,tw:inTW(lon0,lat0)};
+}
 async function open3D(spec){
-  if(!spec.pts||!spec.pts.length){ toast('這附近沒有風機資料，換個地方試試看'); return; }
+  if(!spec.pts||!spec.pts.length){ toast(tr('這附近沒有風機資料，換個地方試試看')); return; }
   gamePause();
-  toast('正在準備 3D 風場…',1500);
+  toast(tr('正在準備 3D 風場…'),1500);
   try{ await loadThree(); await loadGame3D(); }catch(e){ toast(e.message); return; }
   V3.spec=spec;
   const lon0=d3.mean(spec.pts,p=>p.lon), lat0=d3.mean(spec.pts,p=>p.lat), cl=Math.cos(lat0*D2R);
-  const pts=spec.pts.map(p=>({x:(p.lon-lon0)*111320*cl, z:-(p.lat-lat0)*110574, D:p.D, hh:p.hh}));
+  const pts=spec.pts.map(p=>({x:(p.lon-lon0)*111320*cl, z:-(p.lat-lat0)*110574, D:p.D, hh:p.hh, kind:p.kind||0}));
   let R=300; for(const p of pts) R=Math.max(R,Math.hypot(p.x,p.z));
   const biome=biomeFor(lon0,lat0,spec.off);
   const sun=sunPos(S.simT), sunAlt=90-d3.geoDistance([sun[0],sun[1]],[lon0,lat0])/D2R;
@@ -2280,26 +2510,52 @@ async function open3D(spec){
   // 風機最密集處（1.5 公里內鄰居最多），近景地圖與建築物以它為中心
   let dense=spec.pts[0], best=-1;
   for(const p of spec.pts){ let c=0; for(const q of spec.pts) if(Math.abs(q.lon-p.lon)*111.3*cl<1.5&&Math.abs(q.lat-p.lat)*110.6<1.5) c++; if(c>best){ best=c; dense=p; } }
+  if(spec.focus!=null) dense=spec.pts[spec.focus]; // 從風機卡片進來：近景照片、建築以那支風機為中心
   let ground=null;
-  toast('正在載入 3D 地圖⋯',5000);
-  try{ ground=await captureGround(lon0,lat0,cl,(R*8+16000)/2,sea,[dense.lon,dense.lat]); }catch(e){ console.error(e); }
-  WindGame3D.open({title:spec.title,biome,night,sunAlt,sunAz,pts,wind:windAt(lon0,lat0,simSec),rings:sea?landRings(lon0,lat0,cl,(R*8+16000)/2):[],ground},
+  toast(tr('正在用空照圖和地形重建真實場景⋯（約 10～20 秒）'),8000);
+  // 實景重建：空照圖＋地形＋真實建築、樹林；失敗時退回原本的地圖截圖
+  try{ ground=await captureReal(lon0,lat0,cl,R,dense,spec.pts); }catch(e){ console.error(e); ground=null; }
+  if(!ground){ try{ ground=await captureGround(lon0,lat0,cl,(R*8+16000)/2,sea,[dense.lon,dense.lat]); }catch(e){ console.error(e); } }
+  WindGame3D.open({title:spec.title,biome,night,sunAlt,sunAz,pts,wind:windAt(lon0,lat0,simSec),rings:sea?landRings(lon0,lat0,cl,(R*8+16000)/2):[],ground,
+    focus:spec.focus!=null?pts[spec.focus]:null,block:!!spec.block},
     {toast,say,addStar,confetti,powerFrac,VCI,VCO,
+     qual:()=>QUAL.lvl,
      onClose:()=>{ V3.open=false; map.triggerRepaint(); gameResume(); },
      onNight:n=>{ V3.nightOverride=n; open3D(V3.spec); }});
   V3.open=true;
+  if(spec.block) V3.spec=Object.assign({},spec,{block:false}); // 換白天／晚上重開時留在 3D 風場
+}
+// 從風機卡片直接進方塊世界：以這支風機（或傳統風車）為中心，附近 3 公里的風機一起蓋
+function openBlocks(t){
+  const mill=t.kind===3, near=nearPts(t.lon,t.lat,3);
+  const same=near.find(p=>p.d<0.01), D=mill?20:(same&&same.D)||t.D||90;
+  const me={lon:t.lon,lat:t.lat,D,hh:mill?13:(same&&same.hh)||Math.max(45,D*0.65+15),off:t.off?1:0,kind:mill?3:0};
+  open3D({title:TNAMES[tKey(t)]||(t.farm?t.farm.ns:tr(mill?'傳統風車（磨坊）':'這支風車')),off:!!t.off,lon:t.lon,lat:t.lat,
+    pts:[me,...near.filter(p=>p!==same)],farm:t.farm||null,focus:0,block:true});
 }
 function close3D(){ if(window.WindGame3D) WindGame3D.close(); }
 $('#p3d').onclick=()=>{ if(S.sel) open3D(specForFarm(S.sel)); };
-$('#b3d').onclick=()=>{ if(kmPx<0.15){ toast('先把地圖放大到有風機的地方，再按「3D」'); return; } open3D(specHere()); };
+$('#b3d').onclick=()=>{ if(kmPx<0.15){ toast(tr('先把地圖放大到有風機的地方，再按「3D」')); return; } open3D(specHere()); };
 updStars(); updBook();
+
+// 瀏覽人數（今日、累計，依不同網路位址）：Cloudflare Pages 的 /api/visits（functions/api/visits.js）；
+// GitHub Pages 版也連到 windpowerglobe.com 同一份；本機開發只看不算；連不上就不顯示
+(function(){
+  const el=$('#visits'), h=location.hostname; if(!el) return;
+  const local=location.protocol==='file:'||/^(localhost|127\.0\.0\.1|\[::1\])$/.test(h);
+  const url=(/(^|\.)windpowerglobe\.com$|\.pages\.dev$/.test(h)?'':'https://windpowerglobe.com')+'/api/visits';
+  fetch(url,{method:local?'GET':'POST'}).then(r=>r.ok?r.json():null).then(d=>{
+    if(!d||d.total==null) return; const f=n=>Number(n).toLocaleString(I18N.locale);
+    el.querySelector('b').textContent=tr('今日瀏覽 {a} 人・累計 {b} 人',{a:f(d.today),b:f(d.total)}); el.hidden=false;
+  }).catch(()=>{});
+})();
 
 if(WMETA){
   const d=new Date(WMETA.osm_timestamp), ds=`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
-  $('#srcTurb').textContent=`目前收錄 ${WMETA.count.toLocaleString()} 支，${ds} 下載`;
-  $('#impMsg').textContent=`全世界 ${WMETA.count.toLocaleString()} 支風機的位置來自 OpenStreetMap（${ds} 下載）。`+$('#impMsg').textContent.replace(/^風機位置來自 OpenStreetMap。/,'');
+  $('#srcTurb').textContent=tr('目前收錄 {n} 支，{d} 下載',{n:WMETA.count.toLocaleString(I18N.locale),d:ds});
+  $('#impSrc').textContent=tr('全世界 {n} 支風機的位置來自 OpenStreetMap（{d} 下載）。',{n:WMETA.count.toLocaleString(I18N.locale),d:ds});
 }
-if(wtErr) toast('全球風機資料載入失敗：'+wtErr.message,6000);
+if(wtErr) toast(tr('全球風機資料載入失敗：')+wtErr.message,6000);
 readColors();
 applyTheme();
 new ResizeObserver(()=>resize()).observe(mapEl);
@@ -2323,7 +2579,7 @@ function drawLegend(now){
   }
 }
 (function lgLoop(now){ if(legendEl.open&&!document.hidden) drawLegend(now); requestAnimationFrame(lgLoop); })(performance.now());
-window.windGlobe={windAt,TYS,TYPHOONS,get WG(){return WG;},drawTurbineTrue,doCheckIn,CHECKS,DOT,frameBody,PL,setMusic,map,S,FARMS,select,flyTo,open3D,specForFarm,startFind,drawFarms,stepParticles,applyView,updViewBox,bump:()=>vv++}; // 方便在瀏覽器主控台除錯
+window.windGlobe={QUAL,setQual,windAt,TYS,TYPHOONS,get WG(){return WG;},drawTurbineTrue,doCheckIn,CHECKS,DOT,frameBody,PL,setMusic,map,S,FARMS,select,flyTo,open3D,specForFarm,startFind,drawFarms,stepParticles,applyView,updViewBox,bump:()=>vv++}; // 方便在瀏覽器主控台除錯
 if(styleReady) onStyle();
 requestAnimationFrame(frame);
-})().catch(e=>{ console.error(e); const el=document.getElementById('loading'); if(el){ el.hidden=false; el.textContent='載入失敗：'+e.message+'，請重新整理頁面。'; } });
+})().catch(e=>{ console.error(e); const el=document.getElementById('loading'); if(el){ el.hidden=false; el.textContent=tr('載入失敗：{e}，請重新整理頁面。',{e:e.message}); } });

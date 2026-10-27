@@ -1,5 +1,5 @@
 {
- "_note": "網站小幫手的聲音。edge 是微軟線上神經語音的名稱，pitch／rate 讓聲音更可愛（沒寫就是原聲）；g 是選單分組（girl／boy），各組第一個是那一組的預設，整個清單第一個是網站預設。改了之後要重跑 tools/build_voice.py。",
+ "_note": "網站小幫手的聲音。edge 是微軟線上神經語音的名稱，pitch／rate 讓聲音更可愛（沒寫就是原聲）；g 是選單分組（girl／boy），各組第一個是那一組的預設，整個清單第一個是網站預設。lang 是語言（zh 中文、en 英文、ja 日文、ko 韓文；沒寫是 zh），網站只列出介面語言的聲音，外語句子由 assets/i18n/<語言>.js 翻譯。改了之後要重跑 tools/build_voice.py。",
  "voices": [
   {"id": "hsiaochen", "g": "girl", "name": "曉臻", "desc": "台灣口音", "edge": "zh-TW-HsiaoChenNeural", "pitch": "+25Hz", "rate": "+8%"},
   {"id": "xiaoyi", "g": "girl", "name": "曉伊", "desc": "卡通小女孩", "edge": "zh-CN-XiaoyiNeural", "pitch": "+25Hz", "rate": "+8%"},
@@ -10,6 +10,12 @@
   {"id": "yunxi", "g": "boy", "name": "雲希", "desc": "活潑大哥哥", "edge": "zh-CN-YunxiNeural"},
   {"id": "yunjhe", "g": "boy", "name": "雲哲", "desc": "台灣口音", "edge": "zh-TW-YunJheNeural"},
   {"id": "yunjian", "g": "boy", "name": "雲健", "desc": "很有精神", "edge": "zh-CN-YunjianNeural"},
-  {"id": "wanlung", "g": "boy", "name": "雲龍", "desc": "廣東話・可愛版", "edge": "zh-HK-WanLungNeural", "pitch": "+25Hz", "rate": "+8%"}
+  {"id": "wanlung", "g": "boy", "name": "雲龍", "desc": "廣東話・可愛版", "edge": "zh-HK-WanLungNeural", "pitch": "+25Hz", "rate": "+8%"},
+  {"id": "en-ana", "lang": "en", "g": "girl", "name": "Ana", "desc": "Girl", "edge": "en-US-AnaNeural", "rate": "+5%"},
+  {"id": "en-eric", "lang": "en", "g": "boy", "name": "Eric", "desc": "Boy", "edge": "en-US-EricNeural", "pitch": "+20Hz", "rate": "+5%"},
+  {"id": "ja-nanami", "lang": "ja", "g": "girl", "name": "ナナミ", "desc": "おんなのこ", "edge": "ja-JP-NanamiNeural", "pitch": "+20Hz", "rate": "+5%"},
+  {"id": "ja-keita", "lang": "ja", "g": "boy", "name": "ケイタ", "desc": "おとこのこ", "edge": "ja-JP-KeitaNeural", "pitch": "+20Hz", "rate": "+5%"},
+  {"id": "ko-sunhi", "lang": "ko", "g": "girl", "name": "선희", "desc": "여자아이", "edge": "ko-KR-SunHiNeural", "pitch": "+20Hz", "rate": "+5%"},
+  {"id": "ko-injoon", "lang": "ko", "g": "boy", "name": "인준", "desc": "남자아이", "edge": "ko-KR-InJoonNeural", "pitch": "+20Hz", "rate": "+5%"}
  ]
 }
