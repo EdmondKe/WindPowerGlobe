@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <!-- 多國語言：判斷語言、載入字典（要在其他程式之前） -->
-<script src="assets/i18n.js?v=20261028q"></script>
+<script src="assets/i18n.js?v=20261028u"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>風車地球 WindPowerGlobe｜全球風力發電即時模擬</title>
 <link rel="canonical" href="https://windpowerglobe.com/">
@@ -32,7 +32,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Sora:wght@500;700;800&display=swap" rel="stylesheet">
 <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
 <link href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" rel="stylesheet">
-<link href="assets/style.css?v=20261028q" rel="stylesheet">
+<link href="assets/style.css?v=20261028u" rel="stylesheet">
 </head>
 <body>
 <div class="wrap">
@@ -129,7 +129,7 @@
     <div class="gm-h">小遊戲<span>已收集 ⭐ <b id="gmStars">0</b></span></div>
     <button class="big" id="gmFind"><b>找找看</b><small>聽題目，在地球上找出國家</small></button>
     <button class="big" id="gmBlow"><b>3D 風場任務</b><small>點亮村莊、對準風向、撐過暴風，三關拿星星</small></button>
-    <button class="big" id="gmDots"><b>風車點點樂</b><small>照順序點風車連線，練習數字和 ABC（平常點風車也會有 Do Re Mi）</small></button>
+    <button class="big" id="gmDots"><b>風車點點樂</b><small>照順序點風車連線，練習數字和 ABC（點風車會彈出兒歌）</small></button>
     <button class="big" id="gmBook"><b>風場貼紙簿</b><small>點開風場就能收集貼紙</small></button>
     <div class="gm-voice"><button class="pill" id="gmVoice" aria-pressed="true">語音朗讀：開</button><select id="gmVoiceSel" aria-label="朗讀的聲音和音調" hidden></select><button class="pill" id="gmVoiceTry">試聽</button></div>
   </div>
@@ -208,7 +208,11 @@
   <summary><span class="mac-h">更新紀錄</span><small>最後更新：2026/10/27</small><span class="fold" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span></summary>
   <div class="logs">
     <div class="lday"><div class="ld">2026.10.27</div><ul>
-      <li><span class="lt lt-new">新增</span><span>方塊世界的工具：拆、放、大安裝（一次鋪 3×3）、種風機、上一步、一鍵全部復原；「武器」按鈕裡有大槌子、方塊槍、雷射槍、光劍、炸彈、火箭筒、龍捲風。炸彈、火箭筒、龍捲風要輸入英文＋數字的驗證碼才能打開，小小孩亂按不會炸。道具只會影響方塊</span></li>
+      <li><span class="lt lt-new">新增</span><span>點風車會一個音一個音彈出兒歌：小星星、生日快樂、兩隻老虎、瑪莉有隻小綿羊、小蜜蜂、倫敦鐵橋、歡樂頌、王老先生有塊地、划船歌（都是公版老歌），彈完自動再彈一次完整的；連連看全部連起來也會送一首</span></li>
+      <li><span class="lt lt-rev">改版</span><span>地圖上的風車比較好點了：不用點準底下的小點點，點塔身或葉片附近都算，手機範圍更大</span></li>
+      <li><span class="lt lt-new">新增</span><span>方塊世界有背景音樂：即時彈奏的安靜鋼琴，每次都不一樣（右邊「🎵 音樂」或按 M 開關）；從風機卡片進方塊世界不再唸 3D 任務</span></li>
+      <li><span class="lt lt-new">新增</span><span>方塊世界的操作跟 Minecraft 一樣，玩慣了換正版也不用重學。電腦：點一下畫面鎖住滑鼠，W A S D 走、Ctrl 跑、Shift 蹲（在邊緣不會掉下去）、空白鍵跳、連按兩下空白鍵飛，左鍵拆、右鍵放、中鍵選方塊，Esc 叫出滑鼠。平板、手機：拖曳轉頭、點一下放方塊、按住拆方塊、連按兩下跳飛。在水裡要按住跳往上游（想自動浮起來可以開「浮力」）；「加速」讓走路和飛行快一倍</span></li>
+      <li><span class="lt lt-new">新增</span><span>方塊世界的工具：拆／放、大安裝（一次鋪 3×3）、上一步、一鍵全部復原；「🌀 風車」可以蓋大風機、小風車、磨坊風車；「⚔️ 武器」有大槌子、方塊槍、雷射槍、光劍、冰凍槍（水會結冰可以走）、彩虹槍、種樹、炸彈、火箭筒、隕石、龍捲風；「🎒 方塊」（或按 E）有 35 種方塊，冰、雪、金礦、鑽石礦、彩色羊毛、仙人掌、岩漿等。風機的塔被打斷，上半截會整支倒下來。道具只會影響方塊</span></li>
       <li><span class="lt lt-new">新增</span><span>點任何一支風機（連傳統風車也可以），卡片上按「⛏ 進入方塊世界」，就站在它旁邊的方塊世界裡；傳統風車蓋成有帆的磨坊</span></li>
       <li><span class="lt lt-new">新增</span><span>頁面最下面顯示今日瀏覽人數和累計人數（依不同網路位址計算）</span></li>
       <li><span class="lt lt-new">新增</span><span>方塊世界：3D 實景裡按「⛏ 方塊世界」，這裡的地形、房子、道路、樹和風機會照真實位置變成方塊，可以走、跳、飛，自由拆方塊、放方塊</span></li>
@@ -308,6 +312,6 @@
 <script src="https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
 <script>I18N.trDom()</script>
-<script src="assets/app.js?v=20261028q"></script>
+<script src="assets/app.js?v=20261028u"></script>
 </body>
 </html>

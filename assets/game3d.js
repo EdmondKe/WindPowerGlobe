@@ -451,7 +451,7 @@ const VER=(document.currentScript&&document.currentScript.src.split('?')[1])||''
 let BW_P=null;
 function enterBW(){
   if(!G.sv||G.bw) return;
-  ctx.toast(tr('正在把這裡變成方塊…'),2500);
+  ctx.toast(tr('正在把這裡變成方塊…'),2500); ctx.hush&&ctx.hush(); // 小幫手正在唸任務就停掉
   BW_P=BW_P||new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='assets/blocks.js'+(VER?'?'+VER:''); s.onload=res; s.onerror=()=>{ BW_P=null; rej(); }; document.head.appendChild(s); });
   BW_P.then(()=>setTimeout(()=>{ // 等提示畫出來再開始蓋（要一點時間）
     if(!G.open||G.bw) return;
@@ -518,7 +518,7 @@ function startMission(i){
   if(i<3){
     const d=i===2?tr('{s}要來了！風速超過每秒 25 公尺前，按「🛡 保護」收起葉片；風變小後再關掉保護。',{s:storm}):tr(M.d), mt=i===2?tr('{s}來襲',{s:storm}):tr(M.t);
     $('#v3mt').textContent=tr('任務 {n}／3：{t}',{n:i+1,t:mt}); $('#v3md').textContent=d;
-    ctx.say(tr('任務{n}，{t}。{d}',{n:i+1,t:mt,d:d.replace(/[「」“”"🛡◀▶]/g,'')}));
+    if(!G.spec.block) ctx.say(tr('任務{n}，{t}。{d}',{n:i+1,t:mt,d:d.replace(/[「」“”"🛡◀▶]/g,'')})); // 從風機卡片直接進方塊世界：不唸任務
   }else{
     $('#v3mt').textContent=tr('三個任務都完成了！'); $('#v3md').textContent=tr('你是{f}的風之小勇者！',{f:G.spec.title});
   }

@@ -11,7 +11,8 @@ const $=s=>document.querySelector(s);
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 
 /* ---------- 方塊種類與材質 ---------- */
-const TILES=['grassTop','grassSide','dirt','stone','sand','water','asphalt','paint','concrete','wall','window','roof','logTop','logSide','leaves','metal','plank','brick','glass','bomb','bombTop'];
+const TILES=['grassTop','grassSide','dirt','stone','sand','water','asphalt','paint','concrete','wall','window','roof','logTop','logSide','leaves','metal','plank','brick','glass','bomb','bombTop',
+  'ice','snow','snowSide','rock','gold','diamond','woolRed','woolBlue','woolGreen','cactusTop','cactusSide','lava','birchTop','birchSide','leavesOrange','woodRed','brickGrey','gravel','redsand','woolYellow','woolPurple','woolOrange'];
 const TI=Object.fromEntries(TILES.map((t,i)=>[t,i]));
 // [名稱, 上面, 側面, 下面, 看得穿（後面的面要畫）, 上面染成空照圖的顏色]
 const BT=[null,
@@ -33,15 +34,36 @@ const BT=[null,
   ['磚塊','brick','brick','brick',0,0],         // 16
   ['玻璃','glass','glass','glass',1,0],         // 17
   ['炸彈','bombTop','bomb','bombTop',0,0],     // 18
+  ['冰塊','ice','ice','ice',0,0],               // 19
+  ['雪','snow','snowSide','dirt',0,0],          // 20
+  ['鵝卵石','rock','rock','rock',0,0],          // 21
+  ['金礦','gold','gold','gold',0,0],            // 22
+  ['鑽石礦','diamond','diamond','diamond',0,0], // 23
+  ['紅色羊毛','woolRed','woolRed','woolRed',0,0],       // 24
+  ['橘色羊毛','woolOrange','woolOrange','woolOrange',0,0], // 25
+  ['黃色羊毛','woolYellow','woolYellow','woolYellow',0,0], // 26
+  ['綠色羊毛','woolGreen','woolGreen','woolGreen',0,0],   // 27
+  ['藍色羊毛','woolBlue','woolBlue','woolBlue',0,0],      // 28
+  ['紫色羊毛','woolPurple','woolPurple','woolPurple',0,0], // 29
+  ['仙人掌','cactusTop','cactusSide','cactusTop',0,0],   // 30
+  ['岩漿','lava','lava','lava',0,0],            // 31
+  ['白樺木','birchTop','birchSide','birchTop',0,0],      // 32
+  ['秋天的樹葉','leavesOrange','leavesOrange','leavesOrange',1,0], // 33
+  ['紅木板','woodRed','woodRed','woodRed',0,0], // 34
+  ['灰磚','brickGrey','brickGrey','brickGrey',0,0],     // 35
+  ['礫石','gravel','gravel','gravel',0,0],      // 36
+  ['紅沙','redsand','redsand','redsand',0,0],   // 37
 ];
-const BOMB=18, AIR=0, GRASS=1, DIRT=2, STONE=3, SAND=4, WATER=5, ASPHALT=6, PAINT=7, CONCRETE=8, WALL=9, WINDOW=10, ROOF=11, LOG=12, LEAVES=13, METAL=14, PLANK=15;
+const BOMB=18, ICE=19, ROCK=21, LAVA=31, BIRCH=32, LEAVES2=33, WOOL=[24,25,26,27,28,29], AIR=0, GRASS=1, DIRT=2, STONE=3, SAND=4, WATER=5, ASPHALT=6, PAINT=7, CONCRETE=8, WALL=9, WINDOW=10, ROOF=11, LOG=12, LEAVES=13, METAL=14, PLANK=15;
 const HOTBAR=[1,2,3,15,16,17,9,13,14];
+// 物品欄（E）裡可以拿的方塊（白線、炸彈不放進來）
+const INV=[1,2,3,4,21,36,37,20,19,8,6,9,10,11,12,32,15,34,16,35,17,13,33,30,14,22,23,24,25,26,27,28,29,31,5];
 const SEE=new Uint8Array(BT.length); BT.forEach((b,i)=>{ if(b&&b[4]) SEE[i]=1; });
 const FT=[[],[],[]]; BT.forEach((b,i)=>{ if(b){ FT[0][i]=TI[b[1]]; FT[1][i]=TI[b[2]]; FT[2][i]=TI[b[3]]; } }); // 上、側、下 用哪一格材質
 
-// 材質圖：8×4 格，每格 16×16 像素，全部用程式畫
+// 材質圖：8×8 格，每格 16×16 像素，全部用程式畫
 function drawAtlas(){
-  const W=128, H=64, im=new ImageData(W,H), d=im.data, R=mulberry32(20261027), avg=[];
+  const W=128, H=128, im=new ImageData(W,H), d=im.data, R=mulberry32(20261027), avg=[];
   const C=(r,g,b,k)=>[r*k,g*k,b*k,255];
   const F={
     grassTop:(x,y,n)=>C(98,158,62,0.82+0.3*n),
@@ -64,6 +86,24 @@ function drawAtlas(){
     brick:(x,y,n)=>(y%4===3||(x+(y>>2)%2*4)%8===7)?C(196,190,180,1):C(165,72,56,0.85+0.25*n),
     bomb:(x,y,n)=>(y>=6&&y<=9)?C(245,210,70,1):(x===7||x===8)&&y<6?C(40,40,40,1):C(205,50,45,0.85+0.2*n),
     bombTop:(x,y,n)=>Math.hypot(x-7.5,y-7.5)<2.2?C(40,40,40,1):C(205,50,45,0.85+0.2*n),
+    ice:(x,y,n)=>C(170,215,245,(x+y)%9===0?1.08:0.92+0.1*n),
+    snow:(x,y,n)=>C(244,248,252,0.95+0.05*n),
+    snowSide:(x,y,n)=>y<4+((x*5)%3===0?1:0)?C(244,248,252,0.95+0.05*n):C(134,96,67,0.8+0.35*n),
+    rock:(x,y,n)=>C(122,122,118,((x>>2)+(y>>2)*3)%4===0?0.7:0.85+0.3*n),
+    gold:(x,y,n)=>((x*7+y*3)%11<2)?C(250,205,60,1):C(128,128,128,0.82+0.3*n),
+    diamond:(x,y,n)=>((x*5+y*7)%13<2)?C(110,230,235,1):C(128,128,128,0.82+0.3*n),
+    woolRed:(x,y,n)=>C(200,58,52,0.88+0.2*n), woolOrange:(x,y,n)=>C(236,132,40,0.88+0.2*n), woolYellow:(x,y,n)=>C(246,212,56,0.88+0.2*n),
+    woolGreen:(x,y,n)=>C(92,170,62,0.88+0.2*n), woolBlue:(x,y,n)=>C(56,104,206,0.88+0.2*n), woolPurple:(x,y,n)=>C(140,72,190,0.88+0.2*n),
+    cactusTop:(x,y,n)=>C(80,150,60,(x===0||y===0||x===15||y===15)?0.7:0.9+0.15*n),
+    cactusSide:(x,y,n)=>C(72,142,56,x%4===1?0.7:0.9+0.15*n),
+    lava:(x,y,n)=>C(240,110+60*n,30,0.95+0.1*n),
+    birchTop:(x,y,n)=>{ const r=Math.hypot(x-7.5,y-7.5); return r>6.6?C(228,226,214,1):C(200,170,120,((r|0)%2?0.85:1)); },
+    birchSide:(x,y,n)=>((x*3+y*5)%7===0)?C(40,40,40,1):C(228,226,214,0.92+0.1*n),
+    leavesOrange:(x,y,n)=>{ const c=C(222,128,40,0.7+0.5*n); if(R()<0.16) c[3]=0; return c; },
+    woodRed:(x,y,n)=>C(160,70,52,(y%4===3)?0.7:0.88+0.16*n),
+    brickGrey:(x,y,n)=>(y%4===3||(x+(y>>2)%2*4)%8===7)?C(90,90,90,1):C(150,150,152,0.85+0.25*n),
+    gravel:(x,y,n)=>C(140,134,130,n<0.3?0.7:0.9+0.2*n),
+    redsand:(x,y,n)=>C(196,110,62,0.9+0.15*n),
     glass:(x,y,n)=>(x<1||y<1||x>14||y>14)?[222,236,246,255]:(x+y===10||x+y===11)&&x>3&&x<9?[255,255,255,210]:[0,0,0,0],
   };
   TILES.forEach((t,ti)=>{
@@ -89,7 +129,8 @@ function tileAvg(cv){
 }
 // Kenney Voxel Pack（CC0，www.kenney.nl）的材質：assets/blocks/kenney-tiles.png 一排 32×32，順序跟這裡一樣；
 // 柏油、白線、白牆、窗戶、屋頂、風機白鋼、炸彈這些 Kenney 沒有的，繼續用程式畫的
-const KENNEY=['grassTop','grassSide','dirt','stone','sand','water','concrete','logTop','logSide','leaves','plank','brick','glass'];
+const KENNEY=['grassTop','grassSide','dirt','stone','sand','water','concrete','logTop','logSide','leaves','plank','brick','glass',
+  'ice','snow','snowSide','rock','gold','diamond','woolRed','woolBlue','woolGreen','cactusTop','cactusSide','lava','birchTop','birchSide','leavesOrange','woodRed','brickGrey','gravel','redsand'];
 const VER=(document.currentScript&&document.currentScript.src.split('?')[1])||'';
 function loadKenney(A,done){
   const img=new Image();
@@ -294,7 +335,7 @@ function create(o){
         for(let y=1;y<=3;y++){ const r=3-0.75*y; for(let dk=-3;dk<=3;dk++) for(let di=-3;di<=3;di++) if(di*di+dk*dk<=r*r+0.5){ set(i+di,g+hh+y,k+dk,ROOF); nac.add(I(i+di,g+hh+y,k+dk)); } }
         const hub=cell(3,0,hh); set(...hub,LOG); nac.add(I(...hub));
         const ro=sails(Math.max(8,Math.round(p.D/2))); ro.grp.position.set(X0+hub[0]+0.5+F[0]*0.8,Y0+hub[1]+0.5,Z0+hub[2]+0.5+F[1]*0.8); ro.grp.rotation.y=Math.atan2(F[0],F[1]);
-        scene.add(ro.grp); turbs.push({ro,nac,hub:I(...hub),k:0.35,ok:true,x:p.x,z:p.z}); continue;
+        scene.add(ro.grp); turbs.push({ro,nac,hub:I(...hub),k:0.35,ok:true,x:p.x,z:p.z,ax:{i,k,g,r:5,tr:4}}); continue;
       }
       for(let dk=-3;dk<=3;dk++) for(let di=-3;di<=3;di++) if(di*di+dk*dk<=12) set(i+di,g,k+dk,CONCRETE);
       for(let y=1;y<=hh;y++){ const r=2.4-0.9*y/hh; for(let dk=-3;dk<=3;dk++) for(let di=-3;di<=3;di++) if(di*di+dk*dk<=r*r) set(i+di,g+y,k+dk,METAL); }
@@ -302,7 +343,7 @@ function create(o){
       for(let u=-4;u<=4;u++) for(let v=-1;v<=1;v++) for(let y=hh-1;y<=hh+1;y++){ const q=cell(u,v,y); set(...q,METAL); nac.add(I(...q)); }
       const hub=cell(5,0,hh); set(...hub,METAL); nac.add(I(...hub));
       const ro=rotor(L); ro.grp.position.set(X0+hub[0]+0.5+F[0]*0.8,Y0+hub[1]+0.5,Z0+hub[2]+0.5+F[1]*0.8); ro.grp.rotation.y=Math.atan2(F[0],F[1]);
-      scene.add(ro.grp); turbs.push({ro,nac,hub:I(...hub),k:0.8+R()*0.4,ok:true,x:p.x,z:p.z});
+      scene.add(ro.grp); turbs.push({ro,nac,hub:I(...hub),k:0.8+R()*0.4,ok:true,x:p.x,z:p.z,ax:{i,k,g,r:7,tr:3}});
     }else if(Math.hypot(p.x-cx,p.z-cz)<6000){ // 範圍外：方塊風的模型當背景
       const y=G.h(p.x,p.z), hh=p.hh, W=[0.93,0.94,0.96];
       addBox(farP,farC,p.x-1.5,y,p.z-1.5,p.x+1.5,y+hh,p.z+1.5,0,W);
@@ -351,7 +392,7 @@ function create(o){
         for(const f of FACES){
           const n=get(i+f.n[0],y+f.n[1],k+f.n[2]);
           if(b===WATER){ if(n!==AIR) continue; } else if(n!==AIR&&!(SEE[n]&&n!==b)) continue;
-          const L=b===WATER?1:0, t=FT[f.t][b], u0=(t%8)/8+UVE, u1=(t%8+1)/8-UVE, vt=1-(t>>3)/4-UVE, vb=1-((t>>3)+1)/4+UVE;
+          const L=b===WATER?1:0, t=FT[f.t][b], u0=(t%8)/8+UVE, u1=(t%8+1)/8-UVE, vt=1-(t>>3)/8-UVE, vb=1-((t>>3)+1)/8+UVE;
           let r=f.s*sh, g=r, bl=r;
           if(f.t===0&&BT[b][5]&&tintY[c]===y){ const av=A.avg[t]; // 上面染成空照圖的顏色（讓方塊跟真實地面一樣色）
             const tn=(v,a)=>Math.max(0.45,Math.min(1.5,0.45+0.55*v/255/a)); r*=tn(pr[c*3],av[0]); g*=tn(pr[c*3+1],av[1]); bl*=tn(pr[c*3+2],av[2]); }
@@ -377,7 +418,7 @@ function create(o){
   const cam=new T.PerspectiveCamera(70,1,0.08,9000);
   const hl=new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(1.004,1.004,1.004)),new T.LineBasicMaterial({color:0x111111,transparent:true,opacity:0.7}));
   hl.visible=false; scene.add(hl);
-  const pl={x:sv.x0,z:sv.z0,y:0,vy:0,ground:false,fly:false,floaty:true,fast:false,wet:false,yaw:sv.yaw,pitch:Math.min(0.3,sv.pitch),eye:0};
+  const pl={x:sv.x0,z:sv.z0,y:0,vy:0,ground:false,fly:false,floaty:false,fast:false,wet:false,sneak:false,sprint:false,yaw:sv.yaw,pitch:Math.min(0.3,sv.pitch),eye:0};
   if(FO){ // 站在那支風機旁邊、面向它：陸上離 6～16 公尺找不是水的地方；海上就站在基座的水泥平台上
     let ux=sv.x0-FO.x, uz=sv.z0-FO.z, un=Math.hypot(ux,uz); if(un<1){ ux=0; uz=1; un=1; } ux/=un; uz/=un;
     let spot=null; const mill=FO.kind===3;
@@ -393,8 +434,9 @@ function create(o){
   const hit=(x,y,z)=>{ const r=0.3;
     for(let j=Math.floor(y-Y0+0.001);j<=Math.floor(y+1.75-Y0);j++) for(let k=Math.floor(z-r-Z0);k<=Math.floor(z+r-Z0);k++) for(let i=Math.floor(x-r-X0);i<=Math.floor(x+r-X0);i++) if(solid(i,j,k)) return true;
     return false; };
-  const keys=new Set(); let jump=false, sel=0;
+  const keys=new Set(); let jump=false, sel=0, sneakT=false, downT=false, tSpace=0, tW=0, tJump=0;
   function tryMove(nx,nz){
+    if(pl.sneak&&pl.ground&&!pl.wet&&!hit(nx,pl.y-0.1,nz)) return; // 蹲著走到邊緣不會掉下去（跟 Minecraft 一樣）
     if(!hit(nx,pl.y,nz)){ pl.x=nx; pl.z=nz; return; }
     if((pl.ground||pl.wet)&&!pl.fly){ const up=Y0+Math.floor(pl.y-Y0+0.001)+1; if(up-pl.y<=(pl.wet?1.45:1.05)&&!hit(nx,up,nz)&&!hit(pl.x,up,pl.z)){ pl.y=up; pl.x=nx; pl.z=nz; } } // 一格高的台階自動走上去
   }
@@ -402,17 +444,21 @@ function create(o){
     const has=k=>keys.has(k);
     let f=(has('KeyW')||has('ArrowUp')?1:0)-(has('KeyS')||has('ArrowDown')?1:0), s=(has('KeyD')?1:0)-(has('KeyA')?1:0);
     pl.yaw+=((has('ArrowRight')?1:0)-(has('ArrowLeft')?1:0))*1.8*dt;
-    const run=has('ShiftLeft')||has('ShiftRight'), ix=Math.floor(pl.x-X0), kz=Math.floor(pl.z-Z0);
+    // 跟 Minecraft 一樣：Ctrl 或連按兩下 W 跑步，Shift 蹲下（飛行時往下），搖桿推到底往前也會跑
+    const down=has('ShiftLeft')||has('ShiftRight')||downT, ix=Math.floor(pl.x-X0), kz=Math.floor(pl.z-Z0);
+    pl.sneak=!pl.fly&&(has('ShiftLeft')||has('ShiftRight')||sneakT);
     const wet=pl.wet=get(ix,Math.floor(pl.y+0.4-Y0),kz)===WATER;
-    let spd=pl.fly?11:run?7:4.3; if(wet&&!pl.fly) spd*=pl.floaty?0.85:0.6;
-    if(G.joy){ f=-G.joy.y; s=G.joy.x; if(Math.hypot(f,s)>0.92&&!pl.fly) spd=7; }
+    if(G.joy){ f=-G.joy.y; s=G.joy.x; if(Math.hypot(f,s)>0.92&&f>0.5) pl.sprint=true; }
+    if(has('ControlLeft')||has('ControlRight')) pl.sprint=true;
+    if(f<=0||pl.sneak) pl.sprint=false;
+    let spd=pl.fly?(pl.sprint?21.6:10.9):pl.sneak?1.3:pl.sprint?5.6:4.3; if(wet&&!pl.fly) spd*=pl.floaty?0.85:0.6;
     if(pl.fast) spd*=2; // ⚡ 加速：走路、跑步、游泳、飛行都快一倍
     const n=Math.hypot(f,s); if(n>1){ f/=n; s/=n; }
     if(n>0.08){ const fx=Math.sin(pl.yaw), fz=-Math.cos(pl.yaw), d=spd*dt;
       const dx=(fx*f+Math.cos(pl.yaw)*s)*d, dz=(fz*f+Math.sin(pl.yaw)*s)*d;
       tryMove(pl.x+dx,pl.z); tryMove(pl.x,pl.z+dz); }
     const up=jump||has('Space');
-    if(pl.fly) pl.vy=((up?1:0)-(run?1:0))*8*(pl.fast?2:1);
+    if(pl.fly) pl.vy=((up?1:0)-(down?1:0))*8*(pl.fast?2:1);
     else if(wet&&pl.floaty){ // 🛟 浮力：像穿救生衣，自動浮到水面、頭露出來，輕輕上下晃；按跳可以跳上岸
       let w=Math.floor(pl.y+0.4-Y0); while(get(ix,w+1,kz)===WATER) w++;
       const surf=Y0+w+1-0.45+Math.sin(performance.now()/450)*0.06;
@@ -422,22 +468,22 @@ function create(o){
       if(up&&(pl.ground||wet)) pl.vy=wet?3.5:8.2; }
     const ny=pl.y+pl.vy*dt;
     if(hit(pl.x,ny,pl.z)){
-      if(pl.vy<0){ const land=Y0+Math.floor(ny-Y0)+1; if(!hit(pl.x,land,pl.z)) pl.y=land; pl.ground=true; }
+      if(pl.vy<0){ const land=Y0+Math.floor(ny-Y0)+1; if(!hit(pl.x,land,pl.z)) pl.y=land; pl.ground=true; if(pl.fly) setFly(false); } // 飛到地上就變回走路
       pl.vy=0;
     }else{ pl.y=ny; pl.ground=false; }
-    pl.eye+=(pl.y+1.62-pl.eye)*Math.min(1,dt*18);
+    pl.eye+=(pl.y+(pl.sneak?1.27:1.62)-pl.eye)*Math.min(1,dt*18);
   }
 
   // ---------- 指到哪一格（從鏡頭沿著視線一格一格走） ----------
   const V=new T.Vector3();
-  function ray(sx,sy){
+  function ray(sx,sy,far,wet){
     const r=cv.getBoundingClientRect(); V.set((sx-r.left)/r.width*2-1,-(sy-r.top)/r.height*2+1,0.5).unproject(cam).sub(cam.position).normalize();
     let x=cam.position.x-X0, y=cam.position.y-Y0, z=cam.position.z-Z0, i=Math.floor(x), j=Math.floor(y), k=Math.floor(z);
     const dx=V.x, dy=V.y, dz=V.z, si=Math.sign(dx), sj=Math.sign(dy), sk=Math.sign(dz);
     const tdx=Math.abs(1/dx), tdy=Math.abs(1/dy), tdz=Math.abs(1/dz);
     let tx=dx?((si>0?i+1-x:x-i)*tdx):Infinity, tyy=dy?((sj>0?j+1-y:y-j)*tdy):Infinity, tz=dz?((sk>0?k+1-z:z-k)*tdz):Infinity, t=0, p=null;
-    while(t<=10){
-      const b=get(i,j,k); if(b&&b!==WATER&&i>=0&&k>=0&&i<N&&k<N) return {i,j,k,p};
+    while(t<=(far||10)){
+      const b=get(i,j,k); if(b&&(b!==WATER||wet)&&i>=0&&k>=0&&i<N&&k<N) return {i,j,k,p};
       p=[i,j,k];
       if(tx<tyy&&tx<tz){ i+=si; t=tx; tx+=tdx; } else if(tyy<tz){ j+=sj; t=tyy; tyy+=tdy; } else { k+=sk; t=tz; tz+=tdz; }
     }
@@ -445,10 +491,10 @@ function create(o){
   }
   // ---------- 工具：拆、大拆除、放、大安裝、種風機、炸彈；每一次動作可以「上一步」，也可以一鍵全部復原 ----------
   const orig=vox.slice(), origTop=colTop.slice(); // 剛蓋好的樣子（一鍵復原用）
-  // 道具都只會影響方塊（沒有人物、動物），火箭筒和炸彈要輸入驗證碼才能用
-  const TOOLS=[['break','⛏','拆'],['hammer','🔨','大槌子'],['place','🧱','放'],['wall','🏗','大安裝'],['turbine','🌀','種風機'],['blaster','🔫','方塊槍'],['laser','🔦','雷射槍'],['saber','⚔️','光劍'],['bomb','💣','炸彈'],['rocket','🚀','火箭筒'],['tornado','🌪','龍捲風']];
-  const LOCKED=new Set(['bomb','rocket','tornado']);
-  let tool='break', bombOK=false, hist=[], grp=null;
+  // 道具都只會影響方塊（沒有人物、動物）
+  const TOOLS=[['hand','⛏','拆／放'],['wall','🏗','大安裝'],['turbine','🌀','大風機'],['mini','🎐','小風車'],['mill','🏠','磨坊風車'],
+    ['hammer','🔨','大槌子'],['blaster','🔫','方塊槍'],['laser','🔦','雷射槍'],['saber','⚔️','光劍'],['ice','❄️','冰凍槍'],['rainbow','🌈','彩虹槍'],['tree','🌳','種樹'],['bomb','💣','炸彈'],['rocket','🚀','火箭筒'],['meteor','☄️','隕石'],['tornado','🌪','龍捲風']];
+  let tool='hand', hist=[], grp=null;
   const fuses=[], parts=[]; let shake=0;
   function edit(i,y,k,b){
     if(i<0||k<0||i>=N||k>=N||y<1||y>=H) return false;
@@ -459,16 +505,144 @@ function create(o){
   const begin=()=>{ grp={c:[],ro:[]}; return grp; };
   const commit=()=>{ if(grp&&(grp.c.length||grp.ro.length)){ hist.push(grp); if(hist.length>60) hist.shift(); } grp=null; };
   // 風機還完整嗎（機艙、輪轂都在才轉；輪轂不見就把葉片拿掉）
-  function refreshTurbs(say){
+  function refreshTurbs(say,g){
     let stopped=false;
-    for(const t of turbs){ if(!t.nac) continue; let ok=true; for(const id of t.nac) if(vox[id]===AIR){ ok=false; break; }
+    for(const t of turbs){ if(!t.nac) continue; if(t.fallen){ t.ok=false; continue; } let ok=true; for(const id of t.nac) if(vox[id]===AIR){ ok=false; break; }
       if(t.ok&&!ok) stopped=true; t.ok=ok; t.ro.grp.visible=vox[t.hub]!==AIR; }
     if(stopped&&say) ctx.toast(tr('風機的機艙被拆掉了，葉片停下來了！'),2500);
+    if(say) checkFalls(g);
+  }
+  // ---------- 風機倒下：塔被打斷、上半截跟地面連不起來，整支往外倒（離開玩家的方向），倒在地上變回方塊 ----------
+  // 從輪轂和塔的中心那一排往外找連在一起的方塊（只找塔附近、地面以上）；碰得到地面或旁邊別的東西就算撐住
+  const falls=[], NB=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  // 塔每一層原本有幾格（只算塔身）；某一層被打掉一半以上，就從那一層斷掉倒下
+  function layers(a,src){ const L=[]; src=src||vox;
+    for(let y=a.g+1;y<H;y++){ let n=0; for(let dk=-a.tr;dk<=a.tr;dk++) for(let di=-a.tr;di<=a.tr;di++){ if(di*di+dk*dk>a.tr*a.tr+0.5) continue; const b=src[I(a.i+di,y,a.k+dk)]; if(b&&b!==WATER) n++; }
+      if(!n) break; L.push(n); }
+    return L; }
+  function checkFalls(g){
+    for(const t of turbs){ const a=t.ax; if(!a||t.fallen) continue;
+      if(!t.lay) t.lay=layers(a,orig);
+      const cur=layers(a); let yw=-1; for(let q=0;q<t.lay.length-3;q++) if((cur[q]||0)*2<=t.lay[q]){ yw=a.g+1+q; break; } // 最低那一層斷掉的地方
+      const seeds=[]; if(vox[t.hub]) seeds.push(t.hub);
+      for(let y=Math.max(a.g,yw)+1;y<H;y++){ const id=I(a.i,y,a.k); if(vox[id]&&vox[id]!==WATER) seeds.push(id); }
+      const seen=new Map(), drop=[]; let nc=0; // seen：每一格屬於第幾團；碰到前面已經撐住的那一團也算撐住
+      for(const s0 of seeds){ if(seen.has(s0)) continue;
+        const cn=++nc, comp=[], st=[s0]; seen.set(s0,cn); let held=false;
+        while(st.length&&!held){ const id=st.pop(); comp.push(id); if(comp.length>8000){ held=true; break; }
+          const i=id%N, k=Math.floor(id/N)%N, y=Math.floor(id/NN);
+          for(const d of NB){ const ni=i+d[0], ny=y+d[1], nk=k+d[2]; if(ni<0||nk<0||ni>=N||nk>=N||ny>=H) continue;
+            if(ny<1){ held=true; break; }
+            const nid=I(ni,ny,nk), b=vox[nid]; if(!b||b===WATER) continue;
+            if(ny===yw&&(ni-a.i)*(ni-a.i)+(nk-a.k)*(nk-a.k)<=a.tr*a.tr+0.5) continue; // 斷掉的那一層剩下的幾格撐不住
+            const sc=seen.get(nid); if(sc===cn) continue; if(sc){ held=true; break; }
+            if(ny<=a.g||(ni-a.i)*(ni-a.i)+(nk-a.k)*(nk-a.k)>a.r*a.r){ held=true; break; }
+            seen.set(nid,cn); st.push(nid); } }
+        if(!held) drop.push(...comp); }
+      if(drop.length) topple(drop.includes(t.hub)?t:null,drop,a,g); } // 掉下來的幾團一起倒
+  }
+  function topple(t,comp,a,g){
+    if(!g){ g=hist[hist.length-1]; if(!g){ g={c:[],ro:[]}; hist.push(g); } }
+    const blocks=comp.map(id=>[id%N,Math.floor(id/NN),Math.floor(id/N)%N,vox[id]]), inS=new Set(comp);
+    const keep=grp; grp=g; for(const q of blocks) edit(q[0],q[1],q[2],AIR); grp=keep;
+    let dx=X0+a.i+0.5-pl.x, dz=Z0+a.k+0.5-pl.z; if(Math.abs(dx)>=Math.abs(dz)){ dx=Math.sign(dx)||1; dz=0; } else { dz=Math.sign(dz)||1; dx=0; }
+    let ymin=1e9, ymax=0; for(const q of blocks){ if(q[1]<ymin) ymin=q[1]; if(q[1]>ymax) ymax=q[1]; }
+    const px=X0+a.i+0.5+dx*1.5, py=Y0+ymin, pz=Z0+a.k+0.5+dz*1.5;
+    // 倒下來的那一截：用同一張材質圖畫成一個模型，倒完再變回方塊
+    const P=[], U=[], Cc=[];
+    for(const [i,y,k,b] of blocks) for(const f of FACES){
+      if(inS.has(I(i+f.n[0],y+f.n[1],k+f.n[2]))) continue;
+      const t2=FT[f.t][b], u0=(t2%8)/8+UVE, u1=(t2%8+1)/8-UVE, vt=1-(t2>>3)/8-UVE, vb=1-((t2>>3)+1)/8+UVE, uv=[[u0,vb],[u1,vb],[u1,vt],[u0,vt]], s=f.s*sh;
+      for(const v of [0,1,2,0,2,3]){ const q=f.c[v]; P.push(X0+i+q[0]-px,Y0+y+q[1]-py,Z0+k+q[2]-pz); U.push(uv[v][0],uv[v][1]); Cc.push(s,s,s); } }
+    const geo=new T.BufferGeometry(); geo.setAttribute('position',new T.Float32BufferAttribute(P,3)); geo.setAttribute('uv',new T.Float32BufferAttribute(U,2)); geo.setAttribute('color',new T.Float32BufferAttribute(Cc,3));
+    const piv=new T.Group(), body=new T.Mesh(geo,opMat); piv.position.set(px,py,pz); piv.add(body); scene.add(piv);
+    let rot=null; if(t){ rot={pos:t.ro.grp.position.clone(),q:t.ro.grp.quaternion.clone()}; piv.attach(t.ro.grp); t.fallen=true; t.ok=false; }
+    const f={t,piv,body,blocks,g,axis:new T.Vector3(dz,0,-dx),dx,dz,th:0.03,w:0.3,k:Math.min(3,32/Math.max(3,ymax-ymin)),hgt:ymax-ymin+1,rot,done:false};
+    falls.push(f); (g.falls||(g.falls=[])).push(f);
+    if(t) ctx.toast(tr('塔被打斷了，風機要倒下來了！'),2500);
+  }
+  const TV=new T.Vector3();
+  function stepFalls(dt){
+    for(const f of falls){ if(f.done) continue;
+      f.w+=f.k*Math.sin(f.th+0.06)*dt; f.th=Math.min(Math.PI/2,f.th+f.w*dt); f.piv.quaternion.setFromAxisAngle(f.axis,f.th);
+      TV.set(-f.dx*1.5,f.hgt,-f.dz*1.5).applyQuaternion(f.piv.quaternion).add(f.piv.position); // 塔頂碰到東西就停
+      const b=get(Math.floor(TV.x-X0),Math.floor(TV.y-Y0),Math.floor(TV.z-Z0));
+      if(f.th>=Math.PI/2||(f.th>0.35&&b&&b!==WATER)) land(f); }
+  }
+  function land(f){
+    f.done=true; const q=f.piv.quaternion, cells=[];
+    for(const [i,y,k,b] of f.blocks){ TV.set(X0+i+0.5,Y0+y+0.5,Z0+k+0.5).sub(f.body.parent.position).applyQuaternion(q).add(f.piv.position);
+      cells.push([Math.floor(TV.x-X0),Math.floor(TV.y-Y0),Math.floor(TV.z-Z0),b]); }
+    const isFree=(i,y,k)=>{ const b=get(i,y,k); return (b===AIR||b===WATER)&&y>=1; };
+    let d=0; // 整截一起往下掉，直到有一格碰到東西
+    if(cells.some(c=>isFree(c[0],c[1],c[2]))) for(;d<60;d++){ let stop=false; for(const c of cells){ if(!isFree(c[0],c[1]-d,c[2])) continue; if(!isFree(c[0],c[1]-d-1,c[2])){ stop=true; break; } } if(stop) break; }
+    const keep=grp; grp=f.g; let tip=null;
+    for(const c of cells){ const y=c[1]-d; if(c[0]<0||c[2]<0||c[0]>=N||c[2]>=N||y>=H) continue; if(isFree(c[0],y,c[2])&&!onMe(c[0],y,c[2])){ edit(c[0],y,c[2],c[3]); tip=[c[0],y,c[2]]; } }
+    grp=keep;
+    f.piv.position.y-=d; f.piv.remove(f.body); f.body.geometry.dispose(); f.body=null;
+    if(!f.t){ scene.remove(f.piv); }
+    sfx('boom'); shake=0.6;
+    if(tip) for(let n=0;n<24;n++){ const m=new T.Mesh(pbox,n%3?pmatA:pmatB); m.position.set(X0+tip[0]+0.5,Y0+tip[1]+0.5,Z0+tip[2]+0.5); scene.add(m); parts.push({m,t:0.3,v:[(Math.random()-0.5)*10,Math.random()*8+2,(Math.random()-0.5)*10]}); }
+  }
+  function undoFall(f){
+    const q=falls.indexOf(f); if(q>=0) falls.splice(q,1);
+    if(f.body){ f.piv.remove(f.body); f.body.geometry.dispose(); f.body=null; }
+    if(f.t){ scene.attach(f.t.ro.grp); f.t.ro.grp.position.copy(f.rot.pos); f.t.ro.grp.quaternion.copy(f.rot.q); f.t.fallen=false; }
+    scene.remove(f.piv);
   }
   const onMe=(i,y,k)=>{ const bx=X0+i, by=Y0+y, bz=Z0+k; return bx<pl.x+0.3&&bx+1>pl.x-0.3&&bz<pl.z+0.3&&bz+1>pl.z-0.3&&by<pl.y+1.8&&by+1>pl.y; };
   const free=(i,y,k)=>{ const b=get(i,y,k); return (b===AIR||b===WATER)&&i>=0&&k>=0&&i<N&&k<N&&y>=1&&y<H-1&&!onMe(i,y,k); };
   // 小音效（Web Audio 合成，不用音檔）
   let AC=null;
+  // ---------- 背景音樂：用 Web Audio 即時彈的安靜鋼琴（像 Minecraft 那種慢慢的、稀稀落落的琴聲，每次都不一樣，不用音檔） ----------
+  // 一拍 0.75 秒、一個和弦 8 拍；一首 16 個和弦（約 1.5 分鐘），彈完安靜 10～20 秒再換一首（換調、換和弦進行）
+  const mus={on:true,out:null,timer:0,next:0,beat:0,prog:null,key:48,left:0,rest:0};
+  try{ mus.on=localStorage.getItem('windglobe-bwmus')!=='0'; }catch(e){}
+  const acx=()=>{ try{ AC=AC||new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended') AC.resume().catch(()=>{}); return AC; }catch(e){ return null; } };
+  function musOut(){
+    if(mus.out) return mus.out; const a=acx(); if(!a) return null;
+    const g=a.createGain(); g.gain.value=0.0001; const lp=a.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=2400;
+    const rv=a.createConvolver(), len=a.sampleRate*3, ir=a.createBuffer(2,len,a.sampleRate); // 殘響：衰減的雜訊
+    for(let c=0;c<2;c++){ const d=ir.getChannelData(c); for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3); }
+    rv.buffer=ir; const wet=a.createGain(); wet.gain.value=0.5;
+    g.connect(lp); lp.connect(a.destination); lp.connect(rv); rv.connect(wet); wet.connect(a.destination);
+    return (mus.out=g);
+  }
+  // 和弦（從主音算的半音）：大七、小七、四級、五級這類柔和的和弦
+  const PROGS=[[[0,4,7,11],[9,12,16,19],[5,9,12,16],[7,11,14,17]],[[0,4,7,14],[5,9,12,16],[9,12,16,19],[4,7,11,14]],[[5,9,12,16],[0,4,7,11],[2,5,9,12],[7,11,14,19]],[[9,12,16,19],[5,9,12,16],[0,4,7,11],[7,11,14,17]]];
+  const PENTA=[0,2,4,7,9,12,14,16,19,21];
+  function note(t,midi,vel,dur,out){
+    const a=AC, f=440*Math.pow(2,(midi-69)/12), g=a.createGain();
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(vel,t+0.012); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    const o1=a.createOscillator(), o2=a.createOscillator(), g2=a.createGain(); o1.type='triangle'; o1.frequency.value=f; o2.type='sine'; o2.frequency.value=f*2; g2.gain.value=0.22;
+    o1.connect(g); o2.connect(g2); g2.connect(g); g.connect(out||mus.out); o1.start(t); o2.start(t); o1.stop(t+dur+0.05); o2.stop(t+dur+0.05);
+  }
+  function musTick(){ // 每 0.25 秒往後排 1 秒內要彈的音
+    if(!mus.on||!AC||!mus.out||AC.state!=='running') return;
+    const now=AC.currentTime; if(mus.next<now) mus.next=now+0.1;
+    while(mus.next<now+1){
+      const t=mus.next; mus.next+=0.75;
+      if(mus.rest>0){ mus.rest--; continue; }
+      if(!mus.prog){ mus.prog=PROGS[Math.floor(Math.random()*PROGS.length)]; mus.key=[48,50,53,55,57][Math.floor(Math.random()*5)]; mus.left=16; mus.beat=0; }
+      const ch=mus.prog[Math.floor(mus.beat/8)%4], k=mus.key;
+      if(mus.beat%8===0){
+        if(mus.left--<=0){ mus.prog=null; mus.rest=14+Math.floor(Math.random()*12); continue; }
+        note(t,k+ch[0]-12,0.08,6.5); note(t+0.03,k+ch[1],0.03,5); note(t+0.06,k+ch[2],0.03,5);
+      }
+      if(Math.random()<0.42){ const pool=Math.random()<0.6?ch.map(x=>x+12):PENTA.map(x=>x+12), m=k+pool[Math.floor(Math.random()*pool.length)];
+        note(t+(Math.random()<0.3?0.375:0),m,0.045+Math.random()*0.03,2.8); }
+      mus.beat++;
+    }
+  }
+  function setMus(on){
+    mus.on=on; try{ localStorage.setItem('windglobe-bwmus',on?'1':'0'); }catch(e){}
+    const g=musOut(); if(!g) return; const t=AC.currentTime; g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(Math.max(0.0001,g.gain.value),t); g.gain.exponentialRampToValueAtTime(on?0.9:0.0001,t+(on?2:0.6));
+    if(on) mus.next=0;
+  }
+  function enterChime(){ // 進入方塊世界：輕輕的「叮咚」琶音
+    const a=acx(); if(!a) return; const out=a.createGain(); out.gain.value=0.9; out.connect(musOut()||a.destination);
+    const t=a.currentTime+0.15; [72,76,79,84].forEach((m,q)=>note(t+q*0.12,m,0.06,1.6,out));
+  }
   function sfx(kind){
     try{ AC=AC||new (window.AudioContext||window.webkitAudioContext)(); const t=AC.currentTime, g=AC.createGain(); g.connect(AC.destination);
       if(kind==='boom'){ const n=AC.sampleRate*0.9, b=AC.createBuffer(1,n,AC.sampleRate), d=b.getChannelData(0); for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/n,2.5);
@@ -493,20 +667,55 @@ function create(o){
     const nac=new Set(), cell=u=>[i+F[0]*u,y0+hh,k+F[1]*u];
     for(let u=-1;u<=2;u++){ const q=cell(u); if(u!==0&&!free(...q)) continue; edit(...q,METAL); nac.add(I(...q)); }
     const hub=cell(2), ro=rotor(7); ro.grp.position.set(X0+hub[0]+0.5+F[0]*0.8,Y0+hub[1]+0.5,Z0+hub[2]+0.5+F[1]*0.8); ro.grp.rotation.y=Math.atan2(F[0],F[1]); scene.add(ro.grp);
-    const t={ro,nac,hub:I(...hub),k:1.1,ok:true,mine:true}; turbs.push(t); grp.ro.push(t);
+    const t={ro,nac,hub:I(...hub),k:1.1,ok:true,mine:true,ax:{i,k,g:y0-1,r:3,tr:0}}; turbs.push(t); grp.ro.push(t); t.lay=layers(t.ax);
     ctx.toast(tr('種好一支風機了！它會跟著風轉'),2200); return true;
+  }
+  // 小風車：5 格高的白桿＋小葉片（像庭院裡的小風車）
+  function plantMini(p){
+    const [i,y0,k]=p, hh=5; if(y0+hh+2>=H) return false;
+    for(let y=y0;y<=y0+hh;y++) if(!free(i,y,k)) return false;
+    const cell=u=>[i+F[0]*u,y0+hh,k+F[1]*u]; if(!free(...cell(1))) return false;
+    for(let y=y0;y<=y0+hh;y++) edit(i,y,k,METAL);
+    const hub=cell(1); edit(...hub,METAL); const nac=new Set([I(i,y0+hh,k),I(...hub)]);
+    const ro=rotor(3); ro.grp.scale.setScalar(0.6); ro.grp.position.set(X0+hub[0]+0.5+F[0]*0.7,Y0+hub[1]+0.5,Z0+hub[2]+0.5+F[1]*0.7); ro.grp.rotation.y=Math.atan2(F[0],F[1]); scene.add(ro.grp);
+    const t={ro,nac,hub:I(...hub),k:2.2,ok:true,mine:true,ax:{i,k,g:y0-1,r:2,tr:0}}; turbs.push(t); grp.ro.push(t); t.lay=layers(t.ax);
+    ctx.toast(tr('種好一支小風車了！'),2000); return true;
+  }
+  // 磨坊風車：3×3 的小磨坊（石頭底、木板牆、屋頂），前面四片帆
+  function plantMill(p){
+    const [i,y0,k]=p, hh=6; if(y0+hh+3>=H) return false;
+    for(let y=y0;y<=y0+hh+1;y++) for(let dk=-1;dk<=1;dk++) for(let di=-1;di<=1;di++) if(!free(i+di,y,k+dk)) return false;
+    const cell=(u,y)=>[i+F[0]*u,y,k+F[1]*u]; if(!free(...cell(2,y0+hh-1))) return false;
+    const nac=new Set();
+    for(let y=y0;y<y0+hh;y++) for(let dk=-1;dk<=1;dk++) for(let di=-1;di<=1;di++){ if(!di&&!dk) continue; edit(i+di,y,k+dk,y<y0+2?ROCK:PLANK); }
+    for(const y of [y0,y0+1]){ const q=[i-F[0],y,k-F[1]]; edit(...q,AIR); } // 門
+    for(let dk=-1;dk<=1;dk++) for(let di=-1;di<=1;di++){ edit(i+di,y0+hh,k+dk,ROOF); nac.add(I(i+di,y0+hh,k+dk)); }
+    edit(i,y0+hh+1,k,ROOF); nac.add(I(i,y0+hh+1,k));
+    const hub=cell(2,y0+hh-1); edit(...hub,LOG); nac.add(I(...hub));
+    const ro=sails(5); ro.grp.position.set(X0+hub[0]+0.5+F[0]*0.7,Y0+hub[1]+0.5,Z0+hub[2]+0.5+F[1]*0.7); ro.grp.rotation.y=Math.atan2(F[0],F[1]); scene.add(ro.grp);
+    const t={ro,nac,hub:I(...hub),k:0.5,ok:true,mine:true,ax:{i,k,g:y0-1,r:3,tr:1}}; turbs.push(t); grp.ro.push(t); t.lay=layers(t.ax);
+    ctx.toast(tr('蓋好一座磨坊風車了！'),2000); return true;
+  }
+  // 種樹：樹幹＋一團樹葉（有時候是白樺木、秋天的樹葉）
+  function growTree(p){
+    const [i,y0,k]=p, th=4+Math.floor(Math.random()*2), r=2, cy=y0+th; if(cy+r>=H) return false;
+    for(let y=y0;y<=cy;y++) if(!free(i,y,k)) return false;
+    const birch=Math.random()<0.35, leaf=Math.random()<0.35?LEAVES2:LEAVES;
+    for(let y=-r;y<=r;y++) for(let dk=-r;dk<=r;dk++) for(let di=-r;di<=r;di++){ const q=di*di+dk*dk+y*y; if(q>r*r+1) continue; if(get(i+di,cy+y,k+dk)===AIR&&!onMe(i+di,cy+y,k+dk)) edit(i+di,cy+y,k+dk,leaf); }
+    for(let y=y0;y<=cy;y++) edit(i,y,k,birch?BIRCH:LOG);
+    return true;
   }
   const pbox=new T.BoxGeometry(0.35,0.35,0.35), pmatA=new T.MeshBasicMaterial({color:0x8a8070}), pmatB=new T.MeshBasicMaterial({color:0xff7a2a});
   const fuseMat=new T.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.6,depthWrite:false});
   // 炸彈：放下去 1.2 秒後爆炸，半徑 3.5 格的方塊都炸掉（水和最底層不會）；算在放炸彈那一步裡，「上一步」可以一起復原
   function explode(f){
     const keep=grp; grp=f.g; edit(f.i,f.j,f.k,AIR);
-    const r=3.5; for(let y=-4;y<=4;y++) for(let dk=-4;dk<=4;dk++) for(let di=-4;di<=4;di++){ if(di*di+dk*dk+y*y>r*r) continue;
+    const r=f.r||3.5, R0=Math.ceil(r); for(let y=-R0;y<=R0;y++) for(let dk=-R0;dk<=R0;dk++) for(let di=-R0;di<=R0;di++){ if(di*di+dk*dk+y*y>r*r) continue;
       const b=get(f.i+di,f.j+y,f.k+dk); if(b&&b!==WATER) edit(f.i+di,f.j+y,f.k+dk,AIR); }
-    grp=keep; refreshTurbs(true); sfx('boom'); shake=0.5;
+    grp=keep; refreshTurbs(true,f.g); sfx('boom'); shake=f.r>4?0.9:0.5;
     const wx=X0+f.i+0.5, wy=Y0+f.j+0.5, wz=Z0+f.k+0.5;
-    if(Math.hypot(pl.x-wx,pl.y+0.9-wy,pl.z-wz)<6){ pl.vy=7; pl.ground=false; } // 被震得跳起來
-    const ball=new T.Mesh(new T.SphereGeometry(1,16,12),new T.MeshBasicMaterial({color:0xffb347,transparent:true,opacity:0.9,depthWrite:false})); ball.position.set(wx,wy,wz); scene.add(ball);
+    if(Math.hypot(pl.x-wx,pl.y+0.9-wy,pl.z-wz)<(f.r||3.5)+2.5){ pl.vy=7; pl.ground=false; } // 被震得跳起來
+    const ball=new T.Mesh(new T.SphereGeometry(1,16,12),new T.MeshBasicMaterial({color:0xffb347,transparent:true,opacity:0.9,depthWrite:false})); ball.position.set(wx,wy,wz); ball.scale.setScalar((f.r||3.5)/3.5); scene.add(ball);
     parts.push({m:ball,t:0,ball:true});
     for(let q=0;q<36;q++){ const m=new T.Mesh(pbox,q%3?pmatA:pmatB); m.position.set(wx,wy,wz); scene.add(m);
       parts.push({m,t:0,v:[(Math.random()-0.5)*14,Math.random()*12+3,(Math.random()-0.5)*14]}); }
@@ -516,21 +725,24 @@ function create(o){
     if(!place&&tool==='laser'){ laser(sx,sy); return; }
     if(!place&&tool==='saber'){ slashSaber(); return; }
     if(!place&&tool==='tornado'){ const h=ray(sx,sy); if(h) spawnTornado(h); return; }
+    if(!place&&(tool==='ice'||tool==='rainbow')){ spray(sx,sy); return; }
+    if(!place&&tool==='meteor'){ meteor(sx,sy); return; }
     const h=ray(sx,sy); if(!h){ if(tool==='hammer') swing=1; return; }
     const tl=place?'place':tool, p=h.p, ok=p&&free(...p);
     begin();
-    if(tl==='break'){ if(h.j>0&&edit(h.i,h.j,h.k,AIR)) sfx('break'); }
+    if(tl==='hand'){ if(h.j>0&&edit(h.i,h.j,h.k,AIR)) sfx('break'); }
     else if(tl==='hammer'){ swing=1; for(let y=-1;y<=1;y++) for(let dk=-1;dk<=1;dk++) for(let di=-1;di<=1;di++){ const b=get(h.i+di,h.j+y,h.k+dk); if(b&&b!==WATER) edit(h.i+di,h.j+y,h.k+dk,AIR); } sfx('break'); }
     else if(tl==='place'){ if(ok&&edit(...p,HOTBAR[sel])) sfx('place'); }
     else if(tl==='wall'&&p){ // 在點到的那一面上鋪 3×3
       const n=[p[0]-h.i,p[1]-h.j,p[2]-h.k], u=n[1]?[1,0,0]:[0,1,0], v=n[2]?[1,0,0]:[0,0,1];
       for(let a=-1;a<=1;a++) for(let b=-1;b<=1;b++){ const q=[p[0]+u[0]*a+v[0]*b,p[1]+u[1]*a+v[1]*b,p[2]+u[2]*a+v[2]*b]; if(free(...q)) edit(...q,HOTBAR[sel]); }
       sfx('place'); }
-    else if(tl==='turbine'&&ok){ if(!plantTurbine(p)) ctx.toast(tr('這裡太擠了，換個空曠的地方種風機'),2000); else sfx('place'); }
+    else if((tl==='turbine'||tl==='mini'||tl==='mill')&&ok){ if(!(tl==='mini'?plantMini:tl==='mill'?plantMill:plantTurbine)(p)) ctx.toast(tr('這裡太擠了，換個空曠的地方種風機'),2000); else sfx('place'); }
+    else if(tl==='tree'&&ok){ if(growTree(p)) sfx('place'); else ctx.toast(tr('這裡種不下，換個空曠的地方'),1800); }
     else if(tl==='bomb'&&ok){ edit(...p,BOMB); sfx('place');
       const m=new T.Mesh(new T.BoxGeometry(1.06,1.06,1.06),fuseMat); m.position.set(X0+p[0]+0.5,Y0+p[1]+0.5,Z0+p[2]+0.5); scene.add(m);
       fuses.push({i:p[0],j:p[1],k:p[2],t:1.2,m,g:grp}); }
-    const g=grp; commit(); if(g.c.length) refreshTurbs(true);
+    const g=grp; commit(); if(g.c.length) refreshTurbs(true,g);
   }
   // ---------- 方塊槍、火箭筒：從鏡頭往點的方向飛，撞到方塊才作用（方塊槍打掉一格；火箭筒爆炸） ----------
   const projs=[], DIR=new T.Vector3();
@@ -556,12 +768,12 @@ function create(o){
         if(i<0||k<0||i>=N||k>=N||j>=H||s.left<=0){ gone=true; break; }
         const b=get(i,j,k); if(b&&b!==WATER) hc=[i,j,k]; }
       s.m.position.copy(s.p);
-      if(s.rk&&(s.puff-=dt)<=0&&s.p.distanceTo(cam.position)>7){ // 尾煙離鏡頭 7 公尺以上才畫，不會擋住畫面
+      if(s.rk&&(s.puff-=dt)<=0&&s.p.distanceTo(cam.position)>7){ if(s.big) s.m.rotation.z+=0.3; // 尾煙離鏡頭 7 公尺以上才畫，不會擋住畫面
         s.puff=0.035; const m=new T.Mesh(puffGeo,puffMat); m.position.copy(s.p).addScaledVector(s.d,-0.6); scene.add(m); parts.push({m,t:0,puff:true}); }
       if(!hc&&!gone) continue;
       scene.remove(s.m); projs.splice(q,1);
       if(!hc) continue;
-      if(s.rk){ const g={c:[],ro:[]}; explode({i:hc[0],j:hc[1],k:hc[2],g}); pushHist(g); }
+      if(s.rk){ const g={c:[],ro:[]}; explode({i:hc[0],j:hc[1],k:hc[2],g,r:s.big?5.5:3.5}); pushHist(g); }
       else{ const g={c:[],ro:[]}, keep=grp; grp=g; if(hc[1]>0) edit(...hc,AIR); grp=keep; pushHist(g);
         if(g.c.length){ refreshTurbs(true); sfx('break');
           for(let n=0;n<6;n++){ const m=new T.Mesh(pbox,n%2?pmatA:pmatB); m.position.set(X0+hc[0]+0.5,Y0+hc[1]+0.5,Z0+hc[2]+0.5); scene.add(m); parts.push({m,t:0.6,v:[(Math.random()-0.5)*6,Math.random()*5+2,(Math.random()-0.5)*6]}); } } }
@@ -578,6 +790,10 @@ function create(o){
     blaster:heldModel([[-0.06,-0.05,-0.3,0.06,0.07,0.05,[1,0.55,0.15]],[-0.035,-0.01,-0.46,0.035,0.05,-0.3,[0.3,0.62,1]],[-0.04,-0.2,-0.02,0.04,-0.05,0.06,DARK],[-0.045,0.07,-0.22,0.045,0.14,-0.06,[0.35,0.85,0.45]]]),
     laser:heldModel([[-0.06,-0.05,-0.32,0.06,0.07,0.04,[0.92,0.94,0.98]],[-0.03,-0.01,-0.46,0.03,0.05,-0.32,[1,0.25,0.45]],[-0.04,-0.2,-0.02,0.04,-0.05,0.06,DARK],[-0.07,0.0,-0.2,0.07,0.03,-0.08,[0.4,0.85,1]]]),
     saber:heldModel([[-0.03,-0.22,-0.03,0.03,0.0,0.03,GREY],[-0.04,-0.02,-0.04,0.04,0.02,0.04,DARK],[-0.018,0.02,-0.018,0.018,0.95,0.018,[0.55,1,1]],[-0.035,0.02,-0.035,0.035,0.9,0.035,[0.2,0.75,1]]]),
+    ice:heldModel([[-0.06,-0.05,-0.3,0.06,0.07,0.05,[0.75,0.92,1]],[-0.035,-0.01,-0.46,0.035,0.05,-0.3,[0.35,0.75,1]],[-0.04,-0.2,-0.02,0.04,-0.05,0.06,DARK],[-0.07,0.07,-0.2,0.07,0.12,-0.08,[1,1,1]]]),
+    rainbow:heldModel([[-0.06,-0.05,-0.3,0.06,0.07,0.05,[1,0.35,0.6]],[-0.035,-0.01,-0.46,0.035,0.05,-0.3,[1,0.85,0.2]],[-0.04,-0.2,-0.02,0.04,-0.05,0.06,DARK],[-0.07,0.07,-0.2,0.07,0.12,-0.08,[0.35,0.8,1]]]),
+    tree:heldModel([[-0.02,-0.22,-0.02,0.02,0.05,0.02,BROWN],[-0.09,0.03,-0.09,0.09,0.2,0.09,[0.3,0.7,0.3]]]),
+    meteor:heldModel([[-0.08,-0.2,-0.05,0.08,0.02,0.05,DARK],[-0.03,0.02,-0.03,0.03,0.07,0.03,[1,0.25,0.2]]]),
     rocket:heldModel([[-0.08,-0.06,-0.62,0.08,0.1,0.26,[0.35,0.55,0.3]],[-0.1,-0.08,-0.66,0.1,0.12,-0.58,DARK],[-0.03,-0.24,-0.05,0.03,-0.06,0.03,DARK],[-0.02,0.1,-0.22,0.02,0.17,-0.1,DARK]]),
   };
   const held=new T.Group(); held.position.set(0.3,-0.28,-0.6); for(const m of Object.values(HELD)) held.add(m); cam.add(held); scene.add(cam);
@@ -595,12 +811,16 @@ function create(o){
     if(cool>0) return; cool=0.25; kick=0.6; sfx('zap');
     const r=cv.getBoundingClientRect(), d=DIR.set((sx-r.left)/r.width*2-1,-(sy-r.top)/r.height*2+1,0.5).unproject(cam).sub(cam.position).normalize().clone();
     const o=cam.position.clone(), p=o.clone(), g={c:[],ro:[]}, keep=grp; grp=g; let n=0, len=40;
+    hist.push(g); if(hist.length>60) hist.shift(); // 先放進紀錄，風機倒下時才記得到同一步
     for(let t=0;t<40&&n<12;t+=0.25){ p.copy(o).addScaledVector(d,t); const i=Math.floor(p.x-X0), j=Math.floor(p.y-Y0), k=Math.floor(p.z-Z0);
       if(i<0||k<0||i>=N||k>=N||j<1||j>=H){ len=t; break; }
       const b=get(i,j,k); if(b&&b!==WATER&&edit(i,j,k,AIR)){ n++; len=t; } }
-    grp=keep; pushHist(g); if(n) refreshTurbs(true);
+    grp=keep; if(!g.c.length) hist.pop(); if(n) refreshTurbs(true,g);
+    beam(o,d,len,0xff2f6e);
+  }
+  function beam(o,d,len,color){
     const from=o.clone().addScaledVector(d,0.6); from.y-=0.12; const to=o.clone().addScaledVector(d,Math.max(len,2)), L=from.distanceTo(to);
-    const m=new T.Mesh(beamGeo,new T.MeshBasicMaterial({color:0xff2f6e,transparent:true,opacity:0.95,depthWrite:false}));
+    const m=new T.Mesh(beamGeo,new T.MeshBasicMaterial({color,transparent:true,opacity:0.95,depthWrite:false}));
     m.position.copy(from).add(to).multiplyScalar(0.5); m.lookAt(to); m.scale.z=L; scene.add(m); parts.push({m,t:0,beam:true});
   }
   // ---------- 光劍：往前揮一刀，前方 3.5 公尺、左右各 60°、腳下一層到頭上的方塊都切掉 ----------
@@ -612,7 +832,7 @@ function create(o){
     for(let dk=-4;dk<=4;dk++) for(let di=-4;di<=4;di++){ const cx=X0+i0+di+0.5-pl.x, cz=Z0+k0+dk+0.5-pl.z, d=Math.hypot(cx,cz);
       if(d<0.6||d>3.6||(cx*fx+cz*fz)/d<0.5) continue;
       for(let j=j0-1;j<=j0+2;j++){ const b=get(i0+di,j,k0+dk); if(b&&b!==WATER) edit(i0+di,j,k0+dk,AIR); } } // 連腳下那層地面也切出一道溝，揮了一定看得到
-    grp=keep; pushHist(g); if(g.c.length) refreshTurbs(true);
+    grp=keep; pushHist(g); if(g.c.length) refreshTurbs(true,g);
   }
   // ---------- 龍捲風：從點到的地方往前走 4 秒，半徑 2 格、高 8 格的方塊都被捲上天 ----------
   const tornados=[], twMat=new T.MeshBasicMaterial({color:0xdfe6ee,transparent:true,opacity:0.45,depthWrite:false,side:T.DoubleSide});
@@ -630,128 +850,206 @@ function create(o){
       if((w.tick-=dt)<=0&&top>=0){ w.tick=0.1; const keep=grp; grp=w.g; let n=0;
         for(let y=top-1;y<=top+7;y++) for(let dk=-2;dk<=2;dk++) for(let di=-2;di<=2;di++){ if(di*di+dk*dk>5) continue; const b=get(i+di,y,k+dk);
           if(b&&b!==WATER&&edit(i+di,y,k+dk,AIR)&&n++<4){ const m=new T.Mesh(pbox,n%2?pmatA:pmatB); m.position.set(X0+i+di+0.5,Y0+y+0.5,Z0+k+dk+0.5); scene.add(m); parts.push({m,t:0,swirl:true,cx:w.x,cz:w.z,a:Math.random()*6.3,r:1+Math.random()*2}); } }
-        grp=keep; if(n) refreshTurbs(true); }
+        grp=keep; if(n) refreshTurbs(true,w.g); }
       if(w.t<=0||i<0||k<0||i>=N||k>=N){ scene.remove(w.m); w.m.children.forEach(c=>c.geometry.dispose()); tornados.splice(q,1); }
     }
+  }
+  // ---------- 冰凍槍、彩虹槍：射到的地方半徑 2 格變成冰（水也結冰，可以走在上面）或彩虹羊毛 ----------
+  function spray(sx,sy){
+    if(cool>0) return; cool=0.2; kick=0.5; const ic=tool==='ice'; sfx(ic?'zap':'pew');
+    const r=cv.getBoundingClientRect(), d=DIR.set((sx-r.left)/r.width*2-1,-(sy-r.top)/r.height*2+1,0.5).unproject(cam).sub(cam.position).normalize().clone();
+    const h=ray(sx,sy,60,ic), o=cam.position.clone();
+    beam(o,d,h?Math.hypot(X0+h.i+0.5-o.x,Y0+h.j+0.5-o.y,Z0+h.k+0.5-o.z):40,ic?0x9fe8ff:[0xff4a4a,0xffa63a,0xffe14a,0x5ccf5c,0x4a8cff,0xb06aff][Math.floor(Math.random()*6)]);
+    if(!h) return; const g={c:[],ro:[]}, keep=grp; grp=g;
+    for(let y=-2;y<=2;y++) for(let dk=-2;dk<=2;dk++) for(let di=-2;di<=2;di++){ if(di*di+dk*dk+y*y>5) continue;
+      const i=h.i+di, j=h.j+y, k=h.k+dk, b=get(i,j,k); if(!b||j<1) continue;
+      if(ic){ if(b===LAVA) edit(i,j,k,ROCK); else if(b!==ICE&&(b!==WATER||get(i,j+1,k)===AIR)) edit(i,j,k,ICE); } // 水只凍最上面一層
+      else if(b!==WATER) edit(i,j,k,WOOL[((i+j+k)%6+6)%6]); }
+    grp=keep; pushHist(g); if(g.c.length) refreshTurbs(true,g);
+  }
+  // ---------- 隕石：點哪裡，天上就掉一顆隕石下來，撞到方塊炸出半徑 5.5 格的大洞 ----------
+  const meteorGeo=new T.BoxGeometry(1.6,1.6,1.6), meteorMat=new T.MeshBasicMaterial({color:0x6b4a3a}), fireMat=new T.MeshBasicMaterial({color:0xff7a2a});
+  function meteor(sx,sy){
+    if(cool>0) return; const h=ray(sx,sy,90); if(!h) return; cool=1;
+    const tx=X0+h.i+0.5, ty=Y0+h.j+0.5, tz=Z0+h.k+0.5, p=new T.Vector3(tx-Math.sin(pl.yaw)*12,ty+45,tz+Math.cos(pl.yaw)*12), d=new T.Vector3(tx,ty,tz).sub(p).normalize();
+    const m=new T.Mesh(meteorGeo,meteorMat), fl=new T.Mesh(meteorGeo,fireMat); fl.scale.setScalar(0.7); fl.position.z=-1; m.add(fl); m.position.copy(p); m.lookAt(p.clone().add(d)); scene.add(m);
+    projs.push({m,p,d,v:30,rk:true,big:true,left:120,puff:0}); sfx('whoosh');
   }
   function undo(){
     const g=hist.pop(); if(!g){ ctx.toast(tr('沒有可以復原的動作了'),1500); return; }
     for(let q=tornados.length-1;q>=0;q--) if(tornados[q].g===g){ scene.remove(tornados[q].m); tornados[q].m.children.forEach(c=>c.geometry.dispose()); tornados.splice(q,1); }
     for(let q=fuses.length-1;q>=0;q--) if(fuses[q].g===g){ scene.remove(fuses[q].m); fuses[q].m.geometry.dispose(); fuses.splice(q,1); } // 還沒爆的炸彈也拿掉
+    if(g.falls) for(const f of g.falls.slice().reverse()) undoFall(f);
     for(let q=g.c.length-2;q>=0;q-=2){ const id=g.c[q]; vox[id]=g.c[q+1]; const i=id%N, k=Math.floor(id/N)%N, y=Math.floor(id/(N*N)); if(vox[id]&&y>colTop[k*N+i]) colTop[k*N+i]=y; dirty(i,k); }
-    for(const t of g.ro){ scene.remove(t.ro.grp); t.ro.m.geometry.dispose(); turbs.splice(turbs.indexOf(t),1); }
+    for(const t of g.ro){ if(t.ro.grp.parent) t.ro.grp.parent.remove(t.ro.grp); t.ro.m.geometry.dispose(); turbs.splice(turbs.indexOf(t),1); }
     refreshTurbs(false); unstick();
   }
   let resetAsk=0;
   function resetAll(){
     if(performance.now()-resetAsk>3000){ resetAsk=performance.now(); ctx.toast(tr('再按一次「全部復原」，就會回到一開始的樣子'),3000); return; }
-    resetAsk=0; vox.set(orig); colTop.set(origTop); hist=[];
+    resetAsk=0; for(const f of falls.slice()) undoFall(f); vox.set(orig); colTop.set(origTop); hist=[];
     for(const f of fuses){ scene.remove(f.m); f.m.geometry.dispose(); } fuses.length=0;
     for(const w of tornados){ scene.remove(w.m); w.m.children.forEach(c=>c.geometry.dispose()); } tornados.length=0;
-    for(let q=turbs.length-1;q>=0;q--) if(turbs[q].mine){ scene.remove(turbs[q].ro.grp); turbs[q].ro.m.geometry.dispose(); turbs.splice(q,1); }
+    for(let q=turbs.length-1;q>=0;q--) if(turbs[q].mine){ if(turbs[q].ro.grp.parent) turbs[q].ro.grp.parent.remove(turbs[q].ro.grp); turbs[q].ro.m.geometry.dispose(); turbs.splice(q,1); }
     for(let ck=0;ck<NC;ck++) for(let ci=0;ci<NC;ci++) meshChunk(ci,ck);
     refreshTurbs(false); unstick(); ctx.toast(tr('全部復原了！'),2000);
   }
   function unstick(){ while(hit(pl.x,pl.y,pl.z)&&pl.y<Y0+H) pl.y+=1; } // 復原後被方塊卡住：往上移
 
-  // ---------- 操作：拖曳轉頭、點一下用目前的工具（右鍵一定是放一格）、滾輪換方塊 ----------
-  let pd=null;
-  const onDown=e=>{ if(e.pointerType==='mouse'&&e.button===2){ act(e.clientX,e.clientY,true); return; }
-    if(pd) return; pd={id:e.pointerId,x:e.clientX,y:e.clientY,yaw:pl.yaw,pitch:pl.pitch,moved:false}; try{ cv.setPointerCapture(e.pointerId); }catch(err){} };
+  // ---------- 操作：跟 Minecraft 一樣 ----------
+  // 電腦（Java 版）：點一下畫面鎖住滑鼠，移動滑鼠轉頭、看準心；左鍵拆（按住一直拆）、右鍵放（按住一直放）、中鍵選那種方塊；Esc 叫出滑鼠
+  // 平板、手機（基岩版）：拖曳轉頭、點一下放方塊、按住拆方塊；拿武器時點一下就發射
+  // 瀏覽器不讓鎖滑鼠時，電腦改用拖曳轉頭、左鍵用工具、右鍵放
+  let locked=false, noLock=!cv.requestPointerLock, pd=null, hold=null;
+  const REP=new Set(['hand','hammer','blaster','laser','ice','rainbow']); // 按住可以一直用的工具
+  const mid=()=>{ const r=cv.getBoundingClientRect(); return [r.left+r.width/2,r.top+r.height/2]; };
+  const lockNow=()=>{ try{ const q=cv.requestPointerLock(); if(q&&q.catch) q.catch(()=>{ noLock=true; showLock(); }); }catch(e){ noLock=true; showLock(); } };
+  const unlock=()=>{ if(locked) try{ document.exitPointerLock(); }catch(e){} };
+  const onLock=()=>{ locked=document.pointerLockElement===cv; hold=null; if(!locked) keys.clear(); showLock(); };
+  const onLockErr=()=>{ noLock=true; showLock(); };
+  const startHold=(x,y,place)=>{ hold=(place||REP.has(tool))?{x,y,place,t:place?0.2:0.25}:null; };
+  function pickBlock(x,y){ // 中鍵：拿手上指到的那種方塊（不在下面那排就換掉目前這格）
+    const h=ray(x,y); if(!h) return; const b=get(h.i,h.j,h.k); if(!b||b===BOMB) return;
+    let q=HOTBAR.indexOf(b);
+    if(q<0){ q=sel; HOTBAR[q]=b; slots[q].title=tr(BT[b][0]); slots[q].querySelector('i').style.backgroundImage=`url(${iconURL(A.cv,b)})`; }
+    pickSlot(q); if(tool!=='wall') pickTool('hand');
+  }
+  const onDown=e=>{
+    if(e.pointerType==='mouse'){
+      if(locked){ const [x,y]=mid();
+        if(e.button===1){ e.preventDefault(); pickBlock(x,y); return; }
+        if(e.button!==0&&e.button!==2) return;
+        act(x,y,e.button===2); startHold(x,y,e.button===2); return; }
+      if(!noLock){ if(e.button===0) lockNow(); return; }
+      if(e.button===2){ act(e.clientX,e.clientY,true); return; }
+      if(e.button===1){ e.preventDefault(); pickBlock(e.clientX,e.clientY); return; }
+    }
+    if(pd) return; pd={id:e.pointerId,x:e.clientX,y:e.clientY,yaw:pl.yaw,pitch:pl.pitch,moved:false,held:false,touch:e.pointerType!=='mouse',t0:performance.now()};
+    if(pd.touch&&tool==='hand'){ ring.style.left=e.clientX+'px'; ring.style.top=e.clientY+'px'; ring.classList.remove('go'); void ring.offsetWidth; ring.classList.add('go'); }
+    try{ cv.setPointerCapture(e.pointerId); }catch(err){}
+  };
   const onMove=e=>{
-    if(pd&&e.pointerId===pd.id){ const dx=e.clientX-pd.x, dy=e.clientY-pd.y; if(Math.hypot(dx,dy)>6) pd.moved=true;
+    if(locked&&e.pointerType==='mouse'){ pl.yaw+=(e.movementX||0)*0.0025; pl.pitch=Math.max(-1.55,Math.min(1.55,pl.pitch-(e.movementY||0)*0.0025)); return; }
+    if(pd&&e.pointerId===pd.id){ const dx=e.clientX-pd.x, dy=e.clientY-pd.y;
+      if(pd.held){ if(hold){ hold.x=e.clientX; hold.y=e.clientY; } return; } // 按住拆的時候移動手指：跟著拆手指下面的方塊
+      if(Math.hypot(dx,dy)>8&&!pd.moved){ pd.moved=true; ring.classList.remove('go'); }
       if(pd.moved){ pl.yaw=pd.yaw-dx*0.005; pl.pitch=Math.max(-1.45,Math.min(1.45,pd.pitch+dy*0.005)); } return; }
     if(e.pointerType==='mouse'){ const h=ray(e.clientX,e.clientY); hl.visible=!!h; if(h) hl.position.set(X0+h.i+0.5,Y0+h.j+0.5,Z0+h.k+0.5); }
   };
-  const onUp=e=>{ if(!pd||e.pointerId!==pd.id) return; const tap=!pd.moved; pd=null; if(tap) act(e.clientX,e.clientY,false); };
-  const onCancel=e=>{ if(pd&&e.pointerId===pd.id) pd=null; };
+  const onUp=e=>{
+    if(e.pointerType==='mouse'&&locked){ hold=null; return; }
+    if(!pd||e.pointerId!==pd.id) return; const tap=!pd.moved&&!pd.held, touch=pd.touch; pd=null; hold=null; ring.classList.remove('go');
+    if(tap) act(e.clientX,e.clientY,touch&&tool==='hand'); // 平板點一下＝放方塊；拿別的工具＝用那個工具
+  };
+  const onCancel=e=>{ if(pd&&e.pointerId===pd.id){ pd=null; hold=null; ring.classList.remove('go'); } };
+  function stepHold(dt){
+    if(pd&&pd.touch&&!pd.moved&&!pd.held&&performance.now()-pd.t0>350){ // 平板按住不動＝拆
+      pd.held=true; ring.classList.remove('go'); act(pd.x,pd.y,false); startHold(pd.x,pd.y,false); }
+    if(hold&&(hold.t-=dt)<=0){ hold.t=hold.place?0.2:0.25; act(hold.x,hold.y,hold.place); }
+    if(locked){ const [x,y]=mid(), h=ray(x,y); hl.visible=!!h; if(h) hl.position.set(X0+h.i+0.5,Y0+h.j+0.5,Z0+h.k+0.5); }
+  }
   const onWheel=e=>{ e.preventDefault(); pickSlot((sel+(e.deltaY>0?1:-1)+HOTBAR.length)%HOTBAR.length); };
   const noMenu=e=>e.preventDefault();
+  // 正版按 Ctrl 跑步，但瀏覽器的 Ctrl+W 會關掉分頁：在方塊世界裡關分頁前先問一下
+  const onLeave=e=>{ e.preventDefault(); e.returnValue=''; };
+  window.addEventListener('beforeunload',onLeave);
+  document.addEventListener('pointerlockchange',onLock); document.addEventListener('pointerlockerror',onLockErr);
   cv.addEventListener('pointerdown',onDown); cv.addEventListener('pointermove',onMove); cv.addEventListener('pointerup',onUp); cv.addEventListener('pointercancel',onCancel);
   cv.addEventListener('wheel',onWheel,{passive:false}); cv.addEventListener('contextmenu',noMenu);
 
   // ---------- 畫面上的按鈕：下面一排方塊、上面一排工具、右邊跳和飛 ----------
-  const ui=document.createElement('div'), jumpTx=tr('⤒ 跳'), undoTx=tr('上一步'), resetTx=tr('全部復原'); ui.id='bwui';
-  // 武器（大槌子、方塊槍、炸彈、火箭筒）收在一個「武器」按鈕裡，按了在上面跳出選單切換
-  const WEAP=new Set(['hammer','blaster','laser','saber','bomb','rocket','tornado']), weapTx=tr('武器'), tb=t=>`<button type="button" data-t="${t[0]}"><b>${t[1]}</b><small>${tr(t[2])}</small>${LOCKED.has(t[0])?'<i class="lock">🔒</i>':''}</button>`;
-  ui.innerHTML='<div class="bw-tools">'+TOOLS.filter(t=>!WEAP.has(t[0])).map(tb).join('')+
+  const ui=document.createElement('div'), undoTx=tr('上一步'), resetTx=tr('全部復原'), lockTx=tr('點一下畫面開始玩（移動滑鼠轉頭，按 Esc 叫出滑鼠）'); ui.id='bwui';
+  // 武器、風車各收在一個按鈕裡，按了在上面跳出選單切換；🎒（或 E）打開所有方塊
+  const WEAP=new Set(['hammer','blaster','laser','saber','ice','rainbow','tree','bomb','rocket','meteor','tornado']), MILL=new Set(['turbine','mini','mill']);
+  const weapTx=tr('武器'), millTx=tr('風車'), invTx=tr('方塊'), invTitle=tr('🎒 所有方塊：點一下放進下面選中的那一格'), tb=t=>`<button type="button" data-t="${t[0]}"><b>${t[1]}</b><small>${tr(t[2])}</small></button>`;
+  ui.innerHTML='<div class="bw-tools">'+TOOLS.filter(t=>!WEAP.has(t[0])&&!MILL.has(t[0])).map(tb).join('')+
+    `<button type="button" data-a="mill" class="weap mill"><b>🌀</b><small>${millTx}</small></button>`+
     `<button type="button" data-a="weap" class="weap"><b>⚔️</b><small>${weapTx}</small></button>`+
+    `<button type="button" data-a="inv" class="weap inv"><b>🎒</b><small>${invTx}</small></button>`+
     `<button type="button" data-a="undo" class="act"><b>↩</b><small>${undoTx}</small></button><button type="button" data-a="reset" class="act"><b>🔄</b><small>${resetTx}</small></button></div>`+
     '<div class="bw-bar">'+HOTBAR.map((b,q)=>`<button type="button" data-s="${q}" title="${tr(BT[b][0])}"><i style="background-image:url(${iconURL(A.cv,b)})"></i><small>${q+1}</small></button>`).join('')+'</div>'+
-    `<div class="bw-btns"><button type="button" data-a="jump">${jumpTx}</button><button type="button" data-a="fly"></button><button type="button" data-a="float"></button><button type="button" data-a="fast"></button></div>`+
-    '<div class="bw-wmenu" hidden>'+TOOLS.filter(t=>WEAP.has(t[0])).map(tb).join('')+'</div>';
+    `<div class="bw-btns"><button type="button" data-a="jump"></button><button type="button" data-a="sneak"></button><button type="button" data-a="float"></button><button type="button" data-a="fast"></button><button type="button" data-a="mus"></button></div>`+
+    '<div class="bw-wmenu" data-m="weap" hidden>'+TOOLS.filter(t=>WEAP.has(t[0])).map(tb).join('')+'</div>'+
+    '<div class="bw-wmenu" data-m="mill" hidden>'+TOOLS.filter(t=>MILL.has(t[0])).map(tb).join('')+'</div>'+
+    `<div class="bw-inv" hidden><b>${invTitle}</b><div></div></div>`+
+    `<div class="bw-cross" hidden></div><div class="bw-ring"></div><div class="bw-lockhint" hidden>${lockTx}</div>`;
   $('#v3d').appendChild(ui);
-  const bWeap=ui.querySelector('[data-a=weap]'), wmenu=ui.querySelector('.bw-wmenu');
-  function weapMenu(open){
-    wmenu.hidden=!open; bWeap.classList.toggle('open',open); if(!open) return;
-    const b=bWeap.getBoundingClientRect(), t=ui.querySelector('.bw-tools').getBoundingClientRect(), w=wmenu.offsetWidth;
-    wmenu.style.left=Math.max(8,Math.min(innerWidth-w-8,b.left+b.width/2-w/2))+'px'; wmenu.style.bottom=(innerHeight-t.top+8)+'px';
+  const MENUS={weap:{set:WEAP,icon:'⚔️',tx:weapTx},mill:{set:MILL,icon:'🌀',tx:millTx}};
+  for(const [key,m] of Object.entries(MENUS)){ m.btn=ui.querySelector(`[data-a=${key}]`); m.el=ui.querySelector(`[data-m=${key}]`); m.btn.addEventListener('click',()=>openMenu(m.el.hidden?key:null)); }
+  const inv=ui.querySelector('.bw-inv'), bInv=ui.querySelector('[data-a=inv]');
+  function openMenu(name){
+    for(const [key,m] of Object.entries(MENUS)){ const open=key===name; m.el.hidden=!open; m.btn.classList.toggle('open',open); if(!open) continue;
+      const b=m.btn.getBoundingClientRect(), t=ui.querySelector('.bw-tools').getBoundingClientRect(), w=m.el.offsetWidth;
+      m.el.style.left=Math.max(8,Math.min(innerWidth-w-8,b.left+b.width/2-w/2))+'px'; m.el.style.bottom=(innerHeight-t.top+8)+'px'; }
+    if(name) invOpen(false);
   }
-  bWeap.addEventListener('click',()=>weapMenu(wmenu.hidden));
-  cv.addEventListener('pointerdown',()=>weapMenu(false));
-  const slots=[...ui.querySelectorAll('.bw-bar button')], tbtn=[...ui.querySelectorAll('[data-t]')], bJump=ui.querySelector('[data-a=jump]'), bFly=ui.querySelector('[data-a=fly]');
+  function invOpen(open){
+    inv.hidden=!open; bInv.classList.toggle('open',open); if(!open) return; openMenu(null); unlock();
+    const box=inv.querySelector('div'); box.innerHTML=INV.map(b=>`<button type="button" data-b="${b}" title="${tr(BT[b][0])}"><i style="background-image:url(${iconURL(A.cv,b)})"></i><small>${tr(BT[b][0])}</small></button>`).join('');
+    box.querySelectorAll('button').forEach(e=>e.addEventListener('click',()=>{ const b=+e.dataset.b; HOTBAR[sel]=b; slots[sel].title=tr(BT[b][0]); slots[sel].querySelector('i').style.backgroundImage=`url(${iconURL(A.cv,b)})`;
+      if(tool!=='hand'&&tool!=='wall') pickTool('hand'); invOpen(false); }));
+  }
+  bInv.addEventListener('click',()=>invOpen(inv.hidden));
+  cv.addEventListener('pointerdown',()=>{ openMenu(null); invOpen(false); acx(); });
+  const slots=[...ui.querySelectorAll('.bw-bar button')], tbtn=[...ui.querySelectorAll('[data-t]')], bJump=ui.querySelector('[data-a=jump]'), bSneak=ui.querySelector('[data-a=sneak]');
+  const ring=ui.querySelector('.bw-ring'), cross=ui.querySelector('.bw-cross'), lockHint=ui.querySelector('.bw-lockhint');
+  const showLock=()=>{ cross.hidden=!locked; lockHint.hidden=locked||noLock||!matchMedia('(pointer:fine)').matches; };
   function pickSlot(q){ sel=q; slots.forEach((s,i)=>s.classList.toggle('on',i===q)); }
   function pickTool(t){
-    if(LOCKED.has(t)&&!bombOK){ weapMenu(false); gate(t); return; }
-    tool=t; tbtn.forEach(b=>b.classList.toggle('on',b.dataset.t===t)); showHeld(); weapMenu(false);
-    const w=TOOLS.find(x=>x[0]===t), isW=WEAP.has(t); // 「武器」按鈕顯示目前拿的武器
-    bWeap.classList.toggle('on',isW); bWeap.querySelector('b').textContent=isW?w[1]:'⚔️'; bWeap.querySelector('small').textContent=isW?tr(w[2]):weapTx;
-    ui.querySelectorAll('.bw-wmenu .lock').forEach(l=>{ l.hidden=bombOK; });
+    tool=t; tbtn.forEach(b=>b.classList.toggle('on',b.dataset.t===t)); showHeld(); openMenu(null);
+    const w=TOOLS.find(x=>x[0]===t);
+    for(const m of Object.values(MENUS)){ const isW=m.set.has(t); // 「武器」「風車」按鈕顯示目前拿的那一個
+      m.btn.classList.toggle('on',isW); m.btn.querySelector('b').textContent=isW?w[1]:m.icon; m.btn.querySelector('small').textContent=isW?tr(w[2]):m.tx; }
     if(t==='bomb') ctx.toast(tr('炸彈模式：點一下放炸彈，1 秒後爆炸！炸錯了可以按「上一步」'),3000);
     if(t==='rocket') ctx.toast(tr('火箭筒：點哪裡就往哪裡發射，撞到方塊就爆炸！炸錯了可以按「上一步」'),3000);
     if(t==='blaster') ctx.toast(tr('方塊槍：點哪裡就射哪裡，可以打掉遠處的方塊'),2500);
     if(t==='laser') ctx.toast(tr('雷射槍：一道光束射過去，路上的方塊一次消失好幾格'),2500);
     if(t==='saber') ctx.toast(tr('光劍：點一下往前揮，前面的方塊都切掉'),2500);
+    if(t==='ice') ctx.toast(tr('冰凍槍：射到的地方變成冰，水也會結冰，可以走在上面'),2500);
+    if(t==='rainbow') ctx.toast(tr('彩虹槍：把方塊塗成彩虹顏色的羊毛'),2500);
+    if(t==='tree') ctx.toast(tr('種樹：點地面種一棵樹'),2000);
+    if(t==='meteor') ctx.toast(tr('隕石：點哪裡，天上就掉一顆隕石下來，炸出大洞！炸錯了可以按「上一步」'),3000);
+    if(t==='mini') ctx.toast(tr('小風車：點地面種一支小風車'),2000);
+    if(t==='mill') ctx.toast(tr('磨坊風車：點地面蓋一座小磨坊，帆會轉'),2000);
     if(t==='tornado') ctx.toast(tr('龍捲風：點地面放一個龍捲風，它會往前走，把方塊捲上天！炸錯了可以按「上一步」'),3000);
   }
-  const showFly=()=>{ bFly.textContent=tr(pl.fly?'🚶 走路':'🕊 飛'); bFly.classList.toggle('on',pl.fly); };
+  const showFly=()=>{ bJump.textContent=tr(pl.fly?'⤒ 上升':'⤒ 跳'); bSneak.textContent=tr(pl.fly?'⤓ 下降':'🧎 蹲下'); bSneak.classList.toggle('on',!pl.fly&&sneakT); bJump.classList.toggle('on',pl.fly); };
+  function setFly(v,say){ pl.fly=v; pl.vy=0; sneakT=false; downT=false; showFly(); if(say) ctx.toast(tr(v?'🕊 飛起來了！跳往上、蹲下往下；再連按兩下跳就落地':'🚶 回到地上走路'),2200); }
+  const twice=t=>{ const n=performance.now(), ok=n-t<300; return [ok,ok?0:n]; }; // 連按兩下
   const bFloat=ui.querySelector('[data-a=float]'), bFast=ui.querySelector('[data-a=fast]');
   const showOpt=()=>{ bFloat.textContent=tr(pl.floaty?'🛟 浮力 開':'🛟 浮力 關'); bFloat.classList.toggle('on',pl.floaty); bFast.textContent=tr(pl.fast?'⚡ 加速 開':'⚡ 加速'); bFast.classList.toggle('on',pl.fast); };
   const toggleFloat=()=>{ pl.floaty=!pl.floaty; showOpt(); ctx.toast(tr(pl.floaty?'浮力打開了：掉進水裡會自動浮起來':'浮力關掉了：在水裡會慢慢沉下去，按跳可以往上游'),2200); };
   const toggleFast=()=>{ pl.fast=!pl.fast; showOpt(); };
   bFloat.addEventListener('click',toggleFloat); bFast.addEventListener('click',toggleFast);
-  slots.forEach((s,q)=>s.addEventListener('click',()=>{ pickSlot(q); if(tool!=='place'&&tool!=='wall') pickTool('place'); }));
+  const bMus=ui.querySelector('[data-a=mus]'), showMus=()=>{ bMus.textContent=tr(mus.on?'🎵 音樂 開':'🎵 音樂 關'); bMus.classList.toggle('on',mus.on); }, toggleMus=()=>{ setMus(!mus.on); showMus(); };
+  bMus.addEventListener('click',toggleMus);
+  slots.forEach((s,q)=>s.addEventListener('click',()=>{ pickSlot(q); if(tool!=='hand'&&tool!=='wall') pickTool('hand'); }));
   tbtn.forEach(b=>b.addEventListener('click',()=>pickTool(b.dataset.t)));
   ui.querySelector('[data-a=undo]').addEventListener('click',undo);
   ui.querySelector('[data-a=reset]').addEventListener('click',resetAll);
-  bFly.addEventListener('click',()=>{ pl.fly=!pl.fly; pl.vy=0; showFly(); });
-  bJump.addEventListener('pointerdown',e=>{ e.preventDefault(); jump=true; });
+  bJump.addEventListener('pointerdown',e=>{ e.preventDefault(); jump=true; const [ok,t]=twice(tJump); tJump=t; if(ok) setFly(!pl.fly,true); });
   for(const ev of ['pointerup','pointerleave','pointercancel']) bJump.addEventListener(ev,()=>{ jump=false; });
-  pickSlot(0); pickTool('break'); showFly(); showOpt();
+  bSneak.addEventListener('pointerdown',e=>{ e.preventDefault(); if(pl.fly) downT=true; else{ sneakT=!sneakT; showFly(); } }); // 平板的蹲下是按一下切換，飛行時按住往下
+  for(const ev of ['pointerup','pointerleave','pointercancel']) bSneak.addEventListener(ev,()=>{ downT=false; });
+  pickSlot(0); pickTool('hand'); showFly(); showOpt(); showLock(); showMus();
+  musOut(); enterChime(); if(mus.on) setMus(true); mus.timer=setInterval(musTick,250);
   loadKenney(A,()=>{ if(disposed) return; atlas.needsUpdate=true; for(const c of chunks) c.dirty=true; // 換成 Kenney 材質，所有方塊重畫（顏色平均值變了）
     slots.forEach((s,q)=>{ s.querySelector('i').style.backgroundImage=`url(${iconURL(A.cv,HOTBAR[q])})`; }); });
-  ctx.toast(tr(matchMedia('(pointer:coarse)').matches?'方塊世界是照這裡的真實地圖做的！搖桿走路、拖曳畫面轉頭；上面一排選工具，點一下就能拆、放、種風機':'方塊世界是照這裡的真實地圖做的！W A S D 走路、空白鍵跳、F 飛；上面一排選工具再點一下，右鍵放方塊，Ctrl+Z 上一步'),6000);
-
-  // 炸彈模式的門檻：要輸入畫面上的驗證碼（英文＋數字），小小孩亂按不會打開
-  function gate(next){
-    if(ui.querySelector('.bw-gate')) return;
-    const CH='ABCDEFGHJKLMNPQRSTUVWXYZ', DG='23456789'; let code;
-    do{ code=''; for(let q=0;q<5;q++){ const s=Math.random()<0.5?CH:DG; code+=s[Math.floor(Math.random()*s.length)]; } }while(!/[A-Z]/.test(code)||!/\d/.test(code));
-    const g=document.createElement('div'), hint=tr('請大人幫忙：把下面的驗證碼（英文＋數字）打進框框裡'), err=tr('不對喔，再看清楚一次'), noTx=tr('取消'), okTx=tr('開啟'), ttl=tr('強力道具（炸彈、火箭筒、龍捲風）');
-    g.className='bw-gate';
-    g.innerHTML=`<div class="bw-gbox"><b>💥 ${ttl}</b><p>${hint}</p><div class="bw-code"></div>`+
-      `<input type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="5"><p class="bw-err" hidden>${err}</p>`+
-      `<div class="bw-gact"><button type="button" data-g="no">${noTx}</button><button type="button" data-g="ok">${okTx}</button></div></div>`;
-    g.querySelector('.bw-code').textContent=code.split('').join(' ');
-    ui.appendChild(g); const inp=g.querySelector('input'); setTimeout(()=>inp.focus(),50);
-    const done=()=>g.remove();
-    const ok=()=>{ if(inp.value.trim().toUpperCase()===code){ bombOK=true; done(); pickTool(next); } else { g.querySelector('.bw-err').hidden=false; inp.select(); } };
-    g.querySelector('[data-g=ok]').addEventListener('click',ok); g.querySelector('[data-g=no]').addEventListener('click',done);
-    inp.addEventListener('keydown',e=>{ if(e.key==='Enter') ok(); else if(e.key==='Escape') done(); });
-  }
+  ctx.toast(tr(matchMedia('(pointer:coarse)').matches?'方塊世界是照這裡的真實地圖做的！操作跟 Minecraft 一樣：搖桿走路、拖曳轉頭、點一下放方塊、按住拆方塊，連按兩下跳可以飛':'方塊世界是照這裡的真實地圖做的！操作跟 Minecraft 一樣：W A S D 走、Ctrl 跑、Shift 蹲、空白鍵跳（連按兩下飛）；左鍵拆、右鍵放、中鍵選方塊，E 打開所有方塊，Esc 叫出滑鼠'),7000);
 
   // ---------- 鍵盤（由 game3d.js 轉過來） ----------
-  const MOVE=/^(Key[WASD]|Arrow(Up|Down|Left|Right)|Shift(Left|Right)|Space)$/;
+  const MOVE=/^(Key[WASD]|Arrow(Up|Down|Left|Right)|Shift(Left|Right)|Control(Left|Right)|Space)$/;
   function key(e,down){
-    if(e.target&&/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return false; // 正在打驗證碼
     const c=e.code;
+    if(down&&!e.repeat&&c==='Space'){ const [ok,t]=twice(tSpace); tSpace=t; if(ok) setFly(!pl.fly,true); } // 連按兩下空白鍵：飛／落地
+    if(down&&!e.repeat&&c==='KeyW'){ const [ok,t]=twice(tW); tW=t; if(ok) pl.sprint=true; }      // 連按兩下 W：跑步
     if(MOVE.test(c)){ if(down) keys.add(c); else keys.delete(c); return true; }
     if(!down) return false;
     if(c==='KeyZ'&&(e.ctrlKey||e.metaKey)){ undo(); return true; }
-    if(c==='KeyF'){ pl.fly=!pl.fly; pl.vy=0; showFly(); return true; }
+    if(c==='KeyE'){ invOpen(inv.hidden); return true; } // E：物品欄（所有方塊），跟正版一樣
     if(c==='KeyR'){ toggleFast(); return true; }
     if(c==='KeyB'){ toggleFloat(); return true; }
-    if(c==='KeyQ'){ const L=TOOLS.filter(t=>bombOK||!LOCKED.has(t[0])), q=L.findIndex(t=>t[0]===tool); pickTool(L[(q+1)%L.length][0]); return true; }
+    if(c==='KeyM'){ toggleMus(); return true; }
     const m=/^Digit([1-9])$/.exec(c); if(m){ pickSlot(+m[1]-1); return true; }
     return c==='Escape'; // 方塊世界裡 Esc 不離開（避免不小心關掉），按上面的按鈕回去
   }
@@ -764,7 +1062,7 @@ function create(o){
     for(let q=fuses.length-1;q>=0;q--){ const f=fuses[q]; f.t-=dt; f.m.visible=Math.floor(f.t*8)%2===0; if(f.t<=0){ scene.remove(f.m); f.m.geometry.dispose(); fuses.splice(q,1); explode(f); } }
     // 每幀最多重做 6 塊，拆很快也不會卡
     let n=0; for(let q=0;q<chunks.length&&n<6;q++) if(chunks[q].dirty){ meshChunk(q%NC,Math.floor(q/NC)); n++; }
-    stepProjs(dt); stepHeld(dt); stepTornados(dt);
+    stepHold(dt); stepFalls(dt); stepProjs(dt); stepHeld(dt); stepTornados(dt);
     for(let q=parts.length-1;q>=0;q--){ const p=parts[q]; p.t+=dt;
       if(p.beam){ p.m.material.opacity=Math.max(0,0.95-p.t*4); p.m.scale.x=p.m.scale.y=1+p.t*3; if(p.t>0.25){ scene.remove(p.m); p.m.material.dispose(); parts.splice(q,1); } continue; }
       if(p.swirl){ p.a+=dt*7; p.r+=dt*0.8; p.m.position.set(p.cx+Math.cos(p.a)*p.r,p.m.position.y+dt*9,p.cz+Math.sin(p.a)*p.r); p.m.rotation.y+=dt*8; if(p.t>1.4){ scene.remove(p.m); parts.splice(q,1); } continue; }
@@ -784,14 +1082,15 @@ function create(o){
     disposed=true;
     cv.removeEventListener('pointerdown',onDown); cv.removeEventListener('pointermove',onMove); cv.removeEventListener('pointerup',onUp); cv.removeEventListener('pointercancel',onCancel);
     cv.removeEventListener('wheel',onWheel); cv.removeEventListener('contextmenu',noMenu); window.removeEventListener('blur',onBlur);
+    unlock(); window.removeEventListener('beforeunload',onLeave); document.removeEventListener('pointerlockchange',onLock); document.removeEventListener('pointerlockerror',onLockErr);
     ui.remove();
     scene.traverse(m=>{ if(m.geometry) m.geometry.dispose(); });
     atlas.dispose(); opMat.dispose(); waMat.dispose(); rotorMat.dispose(); for(const m of back) m.material.dispose();
     pmatA.dispose(); pmatB.dispose(); fuseMat.dispose(); pbox.dispose(); heldMat.dispose();
-    for(const x of [pelletGeo,pelletMat,rocketGeo,rocketMat,flameGeo,flameMat,puffGeo,puffMat,beamGeo,twMat]) x.dispose(); try{ AC&&AC.close(); }catch(e){}
+    for(const x of [pelletGeo,pelletMat,rocketGeo,rocketMat,flameGeo,flameMat,puffGeo,puffMat,beamGeo,twMat,meteorGeo,meteorMat,fireMat]) x.dispose(); clearInterval(mus.timer); try{ AC&&AC.close(); }catch(e){}
   }
   { const r=cv.getBoundingClientRect(); resize(r.width||innerWidth,r.height||innerHeight); }
-  return {step,resize,key,dispose,_:{vox,colTop,N,H,X0,Y0,Z0,pl,get,act,ray,cam,undo,resetAll,pickTool,turbs,hist:()=>hist}}; // _ 方便除錯
+  return {step,resize,key,dispose,_:{mus,falls,checkFalls,vox,colTop,N,H,X0,Y0,Z0,pl,get,act,ray,cam,keyDown:c=>key({code:c,repeat:false},true),keyUp:c=>key({code:c},false),pickBlock,HOTBAR,tool:()=>tool,undo,resetAll,pickTool,turbs,hist:()=>hist}}; // _ 方便除錯
 }
 
 window.BlockWorld={create};

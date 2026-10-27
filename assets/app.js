@@ -823,7 +823,7 @@ function drawTrueSet(g,list,D,hh,ang0,colFn,farm,spKm,occ){
   for(const t of list){
     if(!inBox(t.lon,t.lat,0)) continue;
     const p=project(t.lon,t.lat); if(!p) continue;
-    tPick.push([p[0],p[1],farm,t]);
+    const pk=[p[0],p[1],farm,t]; tPick.push(pk);
     const lk=localKm(t.lon,t.lat), far=Math.min(1,lk/kmPx);
     const D_=t.D||D, h_=t.hh||hh, trueH=h_/1000*lk;
     g.fillStyle=colFn(t); g.beginPath(); g.arc(p[0],p[1],Math.max(1.6,Math.min(5,D_/1000*lk*0.05)),0,TAU); g.fill();
@@ -832,6 +832,7 @@ function drawTrueSet(g,list,D,hh,ang0,colFn,farm,spKm,occ){
     if(!S.big&&Hp<6) continue;
     if(S.big&&Hp>trueH*1.05){ const cs=Hp*0.8, key=Math.floor(p[0]/cs)+','+Math.floor(p[1]/cs); if(occ.has(key)) continue; occ.add(key); }
     const off=farm?farm.k!=='on':false, era=D_<=77?0:D_<=90?1:D_<=130?2:D_<=167?3:4;
+    pk[4]=Hp; pk[5]=Hp*(D_/2)/h_; // 畫出來的塔高、葉片長（點的時候整支風車都算）
     drawTurbineTrue(g,p[0],p[1],Hp,Hp*(D_/2)/h_,ang0+t.ang,col,farAlpha(far),{kind:0,era,off,green:!off&&inB(TWL_BOX,t.lon,t.lat)},!!t.skin);
   }
 }
@@ -912,9 +913,16 @@ map.on('move',()=>{ vv++; if(!zenMove) clearTrails(); });
 map.on('sourcedata',e=>{ if(e.sourceId==='dem-tr'&&e.tile){ vv++; ELEV.fill(NaN); } });
 map.on('moveend',()=>{ fly=false; });
 // 點一支風機：跳出小卡片，可以開 Google 街景或 Google 地圖（官方網址連結，開新分頁）
+// 點風車：看不見的大點點——底下那個小點點附近（手機 30 像素、電腦 20 像素），加上整支塔身和葉片轉的圓
+const TAP_R=matchMedia('(pointer:coarse)').matches?30:20;
+function tapDist(t,x,y){
+  let d=Math.hypot(t[0]-x,t[1]-y); if(!t[4]) return d;
+  const hy=t[1]-t[4], u=Math.max(0,Math.min(1,(t[1]-y)/Math.max(1,t[4]))); // 塔身這一段
+  d=Math.min(d,Math.hypot(t[0]-x,t[1]-u*t[4]-y), Math.max(0,Math.hypot(t[0]-x,hy-y)-t[5]*0.9)); return d;
+}
 function pickTurbine(x,y){
-  let best=null,bd=14;
-  for(const t of tPick){ const d=Math.hypot(t[0]-x,t[1]-y); if(d<bd){ bd=d; best={lon:t[3].lon,lat:t[3].lat,D:t[3].D||(t[2]&&t[2].D),farm:t[2],off:t[2]?t[2].k!=='on':false}; } }
+  let best=null,bd=TAP_R;
+  for(const t of tPick){ const d=tapDist(t,x,y); if(d<bd){ bd=d; best={lon:t[3].lon,lat:t[3].lat,D:t[3].D||(t[2]&&t[2].D),farm:t[2],off:t[2]?t[2].k!=='on':false}; } }
   if(WC.mode===2){ const L=WC.list; for(let k=0;k<L.length;k+=4){ const d=Math.hypot(L[k]-x,L[k+1]-y); if(d<bd){ bd=d; const i=L[k+2], kk=WT.cl[i]&15;
     best={lon:WT.xy[2*i]/1e5,lat:WT.xy[2*i+1]/1e5,D:DCL[kk]||0,farm:null,off:!!((WT.cl[i]>>4)&1),kind:WT.cl[i]>>5}; } } }
   return best;
@@ -1781,7 +1789,7 @@ function updChecks(){
   }
 }
 
-/* ================= 遊戲三：風車點點樂（點風車彈 Do Re Mi、照順序連線數數字或 ABC） ================= */
+/* ================= 遊戲三：風車點點樂（點風車彈兒歌、照順序連線數數字或 ABC） ================= */
 const DOT={seq:0,on:false,mode:'num',n:10,pts:[],next:0,done:false,glows:[],hintT:0,ac:null,r:16};
 try{ const d=JSON.parse(localStorage.getItem('windglobe-dots')||'null'); if(d&&['num','abc'].includes(d.m)&&[10,26,50,100].includes(d.n)){ DOT.mode=d.m; DOT.n=d.m==='abc'?26:d.n; } }catch(e){} // A–J 已取消，存過的 A–J 改成 A–Z
 const NOTE_HZ=[261.63,293.66,329.63,349.23,392.00,440.00,493.88,523.25,587.33,659.25,698.46,783.99];
@@ -1802,6 +1810,48 @@ function dotNote(i,dur=0.9){
       o.connect(g).connect(ac.destination); o.start(t); o.stop(t+dur+0.05);
     }
   }catch(e){}
+}
+// 公版兒歌（都是作者過世很久的傳統歌曲）：音名＋八度（預設 4），冒號後面是拍數（預設 1 拍）
+const SONGS=[
+  {n:'小星星',m:'C C G G A A G:2 F F E E D D C:2 G G F F E E D:2 G G F F E E D:2 C C G G A A G:2 F F E E D D C:2'},
+  {n:'生日快樂',m:'G3:.75 G3:.25 A3 G3 C B3:2 G3:.75 G3:.25 A3 G3 D C:2 G3:.75 G3:.25 G E C B3 A3:2 F:.75 F:.25 E C D C:2'},
+  {n:'兩隻老虎',m:'C D E C C D E C E F G:2 E F G:2 G:.5 A:.5 G:.5 F:.5 E C G:.5 A:.5 G:.5 F:.5 E C C G3 C:2 C G3 C:2'},
+  {n:'瑪莉有隻小綿羊',m:'E D C D E E E:2 D D D:2 E G G:2 E D C D E E E E D D E D C:3'},
+  {n:'小蜜蜂',m:'G E E:2 F D D:2 C D E F G G G:2 G E E:2 F D D:2 C E G G E:3'},
+  {n:'倫敦鐵橋',m:'G:1.5 A:.5 G F E F G:2 D E F:2 E F G:2 G:1.5 A:.5 G F E F G:2 D:2 G:2 E C:3'},
+  {n:'歡樂頌',m:'E E F G G F E D C C D E E:1.5 D:.5 D:2 E E F G G F E D C C D E D:1.5 C:.5 C:2'},
+  {n:'王老先生有塊地',m:'C C C G3 A3 A3 G3:2 E E D D C:3 G3 C C C G3 A3 A3 G3:2 E E D D C:3'},
+  {n:'划船歌',m:'C:1.5 C:1.5 C D:.5 E:1.5 E D:.5 E F:.5 G:3 C5:.5 C5:.5 C5:.5 G:.5 G:.5 G:.5 E:.5 E:.5 E:.5 C:.5 C:.5 C:.5 G F:.5 E D:.5 C:3'},
+].map(x=>({n:x.n,notes:x.m.split(' ').map(tk=>{ const [a,b]=tk.split(':'), m=/^([A-G])(#?)(\d?)$/.exec(a);
+  return [12*((+m[3]||4)+1)+{C:0,D:2,E:4,F:5,G:7,A:9,B:11}[m[1]]+(m[2]?1:0), b?+b:1]; })}));
+const SONG={i:0,pos:0,told:-1,auto:0};
+try{ SONG.i=(+localStorage.getItem('windglobe-song')||0)%SONGS.length; }catch(e){}
+function playMidi(m,dur=0.9,delay=0){
+  try{
+    if(!DOT.ac) DOT.ac=new (window.AudioContext||window.webkitAudioContext)();
+    const ac=DOT.ac, t=ac.currentTime+delay, f=440*Math.pow(2,(m-69)/12); ac.resume();
+    for(const [type,mul,vol] of [['triangle',1,0.22],['sine',2,0.07]]){
+      const o=ac.createOscillator(), g=ac.createGain(); o.type=type; o.frequency.value=f*mul;
+      g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t+dur+0.05);
+    }
+  }catch(e){}
+}
+const songName=()=>tr(SONGS[SONG.i].n);
+// 彈下一個音；整首彈完回傳 true（換下一首）
+function songStep(){
+  const S_=SONGS[SONG.i]; if(SONG.told!==SONG.i&&SONG.pos===0){ SONG.told=SONG.i; toast(tr('🎵 點風車，一個音一個音彈出《{s}》',{s:songName()}),3000); }
+  const [m,b]=S_.notes[SONG.pos]; playMidi(m,Math.min(1.6,0.5+b*0.4)); SONG.pos++;
+  if(SONG.pos<S_.notes.length) return m;
+  toast(tr('🎉 《{s}》彈完了！再聽一次完整的',{s:songName()}),3000); songAuto(SONG.i,0.9);
+  SONG.pos=0; SONG.i=(SONG.i+1)%SONGS.length; try{ localStorage.setItem('windglobe-song',SONG.i); }catch(e){}
+  return m;
+}
+// 自動彈整首（照拍子）
+function songAuto(i,wait=0){
+  const tok=++SONG.auto, beat=0.42; let t=wait;
+  for(const [m,b] of SONGS[i].notes){ const d=t; setTimeout(()=>{ if(tok===SONG.auto) playMidi(m,Math.min(1.4,0.35+b*beat)); },d*1000); t+=b*beat; }
+  return t;
 }
 function dotBuzz(){
   try{
@@ -1874,27 +1924,30 @@ function updDotBar(){
   if(DOT.done){ $('#dq').textContent=tr('完成了！🎉'); $('#dhint').textContent=tr('換個玩法，或拖曳地圖到別的風場再玩一次。'); return; }
   const n=DOT.pts.length, l=DOT.pts[DOT.next]?DOT.pts[DOT.next].label:'';
   $('#dq').textContent=tr('連連看：{a} → {b}，下一個是「{l}」',{a:dotLabel(0),b:dotLabel(n-1),l});
-  $('#dhint').textContent=tr('每點對一支，就會彈出 Do Re Mi 的下一個音（{i}/{n}）',{i:DOT.next,n});
+  $('#dhint').textContent=tr('每點對一支，就會彈出《{s}》的下一個音（{i}/{n}）',{s:songName(),i:DOT.next,n});
 }
 // 平常點任何一支風車都會發出一個音（畫面越上面越高），並閃一下霓虹光
 function tapNote(t,y){
-  const i=Math.round((1-Math.max(0,Math.min(1,y/H)))*9); dotNote(i);
+  const m=songStep(), i=Math.max(0,Math.min(9,Math.round((m-60)/2))); // 光的顏色跟音高
+
   DOT.glows.push({lon:t.lon,lat:t.lat,t:performance.now(),i}); if(DOT.glows.length>40) DOT.glows.shift();
 }
 function dotClick(x,y){
   const now=performance.now();
   if(DOT.done||!DOT.pts.length) return;
-  let best=-1,bd=34;
+  let best=-1,bd=TAP_R>20?52:36; // 連連看也放大一點
   DOT.pts.forEach((p,k)=>{ const q=project(p.lon,p.lat); if(!q) return; const d=Math.hypot(q[0]-x,q[1]-6-y); if(d<bd){bd=d;best=k;} });
   if(best<0) return;
   if(best===DOT.next){
-    const p=DOT.pts[best]; p.lit=true; p.flash=now; dotNote(best%8);
+    const p=DOT.pts[best]; p.lit=true; p.flash=now; { const nt=SONGS[SONG.i].notes; playMidi(nt[best%nt.length][0]); }
     say(dotSay(best));
     DOT.next++; DOT.hintT=now;
     if(DOT.next>=DOT.pts.length){
       DOT.done=true; addStar(); confetti($('#map'));
       const step=Math.min(140,2800/DOT.pts.length);
-      DOT.pts.forEach((q,k)=>setTimeout(()=>{ dotNote(k%8,0.6); q.flash=performance.now(); },700+k*step));
+      const song=SONG.i, len=songAuto(song,0.7); SONG.i=(SONG.i+1)%SONGS.length; SONG.pos=0; // 全部連起來：自動彈完整首，下一局換一首
+      DOT.pts.forEach((q,k)=>setTimeout(()=>{ q.flash=performance.now(); },700+k*Math.min(140,len*1000/DOT.pts.length)));
+      toast(tr('🎉 送你一首《{s}》',{s:tr(SONGS[song].n)}),3500);
       const N=DOT.pts.length;
       setTimeout(()=>say(N>10?tr('太棒了！全部連起來了！'):DOT.mode==='abc'?tr('太棒了！A 到 {x} 全部連起來了！',{x:DOT.pts[N-1].label}):tr('太棒了！一到{x}全部連起來了！',{x:dotSay(N-1)})),700+N*step);
     }
@@ -2239,7 +2292,7 @@ let G3_P=null;
 function loadGame3D(){
   if(window.WindGame3D) return Promise.resolve();
   if(G3_P) return G3_P;
-  G3_P=new Promise((res,rej)=>{const s=document.createElement('script');s.src='assets/game3d.js?v=20261028q';s.onload=()=>res();s.onerror=()=>{G3_P=null;rej(new Error(tr('3D 遊戲載入失敗，請檢查網路後再試一次')));};document.head.appendChild(s);});
+  G3_P=new Promise((res,rej)=>{const s=document.createElement('script');s.src='assets/game3d.js?v=20261028u';s.onload=()=>res();s.onerror=()=>{G3_P=null;rej(new Error(tr('3D 遊戲載入失敗，請檢查網路後再試一次')));};document.head.appendChild(s);});
   return G3_P;
 }
 function nearPts(lon,lat,km){
@@ -2512,13 +2565,13 @@ async function open3D(spec){
   for(const p of spec.pts){ let c=0; for(const q of spec.pts) if(Math.abs(q.lon-p.lon)*111.3*cl<1.5&&Math.abs(q.lat-p.lat)*110.6<1.5) c++; if(c>best){ best=c; dense=p; } }
   if(spec.focus!=null) dense=spec.pts[spec.focus]; // 從風機卡片進來：近景照片、建築以那支風機為中心
   let ground=null;
-  toast(tr('正在用空照圖和地形重建真實場景⋯（約 10～20 秒）'),8000);
+  toast(tr(spec.block?'正在抓這裡的空照圖、地形和房子，等一下就變成方塊⋯（約 10～20 秒）':'正在用空照圖和地形重建真實場景⋯（約 10～20 秒）'),8000);
   // 實景重建：空照圖＋地形＋真實建築、樹林；失敗時退回原本的地圖截圖
   try{ ground=await captureReal(lon0,lat0,cl,R,dense,spec.pts); }catch(e){ console.error(e); ground=null; }
   if(!ground){ try{ ground=await captureGround(lon0,lat0,cl,(R*8+16000)/2,sea,[dense.lon,dense.lat]); }catch(e){ console.error(e); } }
   WindGame3D.open({title:spec.title,biome,night,sunAlt,sunAz,pts,wind:windAt(lon0,lat0,simSec),rings:sea?landRings(lon0,lat0,cl,(R*8+16000)/2):[],ground,
     focus:spec.focus!=null?pts[spec.focus]:null,block:!!spec.block},
-    {toast,say,addStar,confetti,powerFrac,VCI,VCO,
+    {toast,say,hush:sayStop,addStar,confetti,powerFrac,VCI,VCO,
      qual:()=>QUAL.lvl,
      onClose:()=>{ V3.open=false; map.triggerRepaint(); gameResume(); },
      onNight:n=>{ V3.nightOverride=n; open3D(V3.spec); }});
@@ -2579,7 +2632,7 @@ function drawLegend(now){
   }
 }
 (function lgLoop(now){ if(legendEl.open&&!document.hidden) drawLegend(now); requestAnimationFrame(lgLoop); })(performance.now());
-window.windGlobe={QUAL,setQual,windAt,TYS,TYPHOONS,get WG(){return WG;},drawTurbineTrue,doCheckIn,CHECKS,DOT,frameBody,PL,setMusic,map,S,FARMS,select,flyTo,open3D,specForFarm,startFind,drawFarms,stepParticles,applyView,updViewBox,bump:()=>vv++}; // 方便在瀏覽器主控台除錯
+window.windGlobe={pickTurbine,SONG,SONGS,get tPick(){return tPick;},QUAL,setQual,windAt,TYS,TYPHOONS,get WG(){return WG;},drawTurbineTrue,doCheckIn,CHECKS,DOT,frameBody,PL,setMusic,map,S,FARMS,select,flyTo,open3D,specForFarm,startFind,drawFarms,stepParticles,applyView,updViewBox,bump:()=>vv++}; // 方便在瀏覽器主控台除錯
 if(styleReady) onStyle();
 requestAnimationFrame(frame);
 })().catch(e=>{ console.error(e); const el=document.getElementById('loading'); if(el){ el.hidden=false; el.textContent=tr('載入失敗：{e}，請重新整理頁面。',{e:e.message}); } });
