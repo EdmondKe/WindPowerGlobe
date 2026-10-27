@@ -71,3 +71,8 @@
   - 翻譯 914 句 0 問題；更新紀錄、README。
 - [ ] 以上三批（Minecraft 操作、倒下／新武器／新方塊、音樂／兒歌／點風車範圍）都還沒 commit、沒上線；push 上次被自動權限擋下，等使用者同意。
 - [ ] 尚未做：使用者手機實測。voice/ 不進 git，發布時 GitHub Actions 會錄。
+
+### 2026-10-27 上線 20261028u
+- 使用者同意後 commit 5612378（Minecraft 操作、風車會倒、武器方塊小風車、方塊世界音樂、兒歌、點擊範圍）並 push main；GitHub Actions 兩個流程皆 success，windpowerglobe.com 已是 20261028u。
+- 瀏覽人數仍未出現：/api/visits 回 no database，需使用者在 Cloudflare 建 D1 並綁定 VISITS_DB 後重新部署。
+- 2026-10-27：使用者在內建瀏覽器登入 Cloudflare 後，建立 D1 資料庫 windpowerglobe-visits，並在 Pages 專案 windpowerglobe 綁定為 VISITS_DB；經使用者同意 push 本筆工作日誌觸發重新部署使綁定生效。
