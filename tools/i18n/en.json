@@ -776,7 +776,6 @@
  "強烈氣旋": "Severe Cyclone",
  "多國語言：英文、繁體中文、簡體中文、日文、韓文，依瀏覽器語言和地區自動切換，標題右邊可以手動換；小幫手也會說英文、日文、韓文": "Languages: English, Traditional Chinese, Simplified Chinese, Japanese and Korean, picked automatically from your browser language and region; switch any time at the top right. The voice helper now speaks English, Japanese and Korean too",
  "畫質自動調整：依裝置順不順自動調整地圖和 3D 的畫質，觀看設定裡也可以固定成高、中、低": "Auto graphics quality: the map and 3D adjust to how smoothly your device runs; you can also fix it to High, Medium or Low in View settings",
- "最後更新：2026/10/27": "Last updated: 2026/10/27",
  "點亮海上變電站": "Light Up the Offshore Substation",
  "按住「吹風」，讓風車轉起來，把變電站的燈全部點亮！": "Hold \"Blow\" to spin the turbines and light up every window of the substation!",
  "變電站的燈都亮了！": "All the substation lights are on!",
@@ -912,5 +911,14 @@
  "🎵 點風車，一個音一個音彈出《{s}》": "🎵 Tap turbines to play \"{s}\" one note at a time",
  "🎉 《{s}》彈完了！再聽一次完整的": "🎉 You played \"{s}\"! Here it is all the way through",
  "每點對一支，就會彈出《{s}》的下一個音（{i}/{n}）": "Each right turbine plays the next note of \"{s}\" ({i}/{n})",
- "🎉 送你一首《{s}》": "🎉 Here's \"{s}\" for you"
+ "🎉 送你一首《{s}》": "🎉 Here's \"{s}\" for you",
+ "{s}走遠了～": "The {s} is moving away~",
+ "{s}距離 {d} 公里，越來越近了！": "{s} is {d} km away and getting closer!",
+ "{s}來了！": "The {s} is here!",
+ "最後更新：2026/10/28": "Last updated: 2026/10/28",
+ "3D 任務三「颱風來襲」：天上會出現一顆會轉、有表情的可愛颱風，從遠方慢慢靠近再飄走，上面顯示颱風還有幾公里；風太強時「保護」鈕會一直閃": "3D mission 3 \"Storm Alert\": a cute spinning storm with a face appears in the sky, slowly comes closer and drifts away, with a sign showing how many km away it is; the \"Protect\" button flashes when the wind gets too strong",
+ "3D 風場的底圖顏色更鮮豔可愛，海、湖、河變成會動的波浪；空照圖沒抓到的地方改成草地，不再露出米色地圖": "The 3D wind farm ground has brighter, cuter colors, and seas, lakes and rivers are now moving waves; spots where the aerial photo didn't load show grass instead of a beige map",
+ "環遊世界導覽不會再自動送貼紙（要自己點風場才拿得到）": "The world tour no longer gives stickers by itself (tap a wind farm yourself to get one)",
+ "網頁縮小或切到別的分頁時，音樂播完會接著播下一首；換音樂區時偶爾整個沒聲音的問題": "Music now moves on to the next song when the page is minimized or in another tab; fixed music sometimes going silent when changing music zones",
+ "放空模式或環遊導覽中點小遊戲，會自動關掉放空／導覽，遊戲直接開始": "Opening a mini game during relax mode or the world tour now turns them off and starts the game right away"
 }

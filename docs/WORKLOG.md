@@ -76,3 +76,12 @@
 - 使用者同意後 commit 5612378（Minecraft 操作、風車會倒、武器方塊小風車、方塊世界音樂、兒歌、點擊範圍）並 push main；GitHub Actions 兩個流程皆 success，windpowerglobe.com 已是 20261028u。
 - 瀏覽人數仍未出現：/api/visits 回 no database，需使用者在 Cloudflare 建 D1 並綁定 VISITS_DB 後重新部署。
 - 2026-10-27：使用者在內建瀏覽器登入 Cloudflare 後，建立 D1 資料庫 windpowerglobe-visits，並在 Pages 專案 windpowerglobe 綁定為 VISITS_DB；經使用者同意 push 本筆工作日誌觸發重新部署使綁定生效。
+
+### 2026-10-28 四個 bug 修正（版本 20261028v，未 commit、未上線）
+- 需求（使用者回報）：1. 環遊世界導覽會自動拿到貼紙；2. 網頁縮小時音樂播完不接下一首、偶爾無聲；3. 放空模式中點小遊戲開不起來；4. 3D 任務底圖醜，要可愛又寫實，颱風關要有明顯可愛的颱風動態。
+- app.js：select(f,go,auto) 加 auto 參數，導覽與換語言重畫面板不給貼紙；setInterval 在畫面停更新（>400ms 沒跑 updMusic）時照顧音樂，淡出到一半回原音樂區時把音量拉回（原本會永久靜音）；小遊戲選單點擊與 open3D 先關掉放空／導覽，setZen(false) 時 map.stop()。
+- app.js 實景擷取：每層空照圖先截向量圖的水遮罩（洋紅），cuteShot 提高飽和亮度並把水挖空；截空照圖時向量底圖換成草地綠（#8cc56c）、隱藏道路文字，空照圖磚沒抓到也不會露出米色地圖；cap-photo/cap-s2 有錯誤時再等 8 秒重抓。3D spec 加 typhoon（西北太平洋）。
+- game3d.js：實景陸地場景在遠景範圍下面加一片會動的海（y=-1.5），挖空的水露出海浪；任務 3 加 stormTex（三條旋臂雲＋可愛表情）兩個 sprite，從鏡頭前方 9 公里靠近到 1.8 公里、停留、往右飄走；#v3ty 顯示「颱風距離 N 公里」，最強時變紅跳動；風速 ≥20 未保護時 #v3prot 閃爍；西北太平洋的風場暴風一律叫颱風。
+- 驗證（本機 127.0.0.1:8765，視窗未顯示、rAF 停止的狀態）：導覽 0 張貼紙、手動點 1 張；畫面停止時音樂淡入到 0.55、ended 後換下一首並淡入、淡出中回原區音量恢復；放空中點 3D 任務與點點樂都會先關放空並開始；3D 颱風靠近畫面截圖確認；i18n en/ja/ko 0 問題。
+- 未驗證：空照圖＋水遮罩的實際畫面（視窗隱藏時離屏地圖不渲染，擷取只得到空白），需使用者實機看；也還沒在手機上看颱風提示位置。
+- 修改檔：assets/app.js、assets/game3d.js、assets/style.css、index.html（版本 v、更新紀錄 2026.10.28）、assets/i18n*.js、tools/i18n/*.json。注意：用 Python 文字模式改檔會把 LF 檔改成 CRLF，已改回各檔原本的換行。

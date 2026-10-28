@@ -67,6 +67,26 @@ function wallTexture(){
 }
 function pip(rings,x,z){ const y=-z; for(const r of rings){ let ins=false; for(let i=0,j=r.length-1;i<r.length;j=i++){const xi=r[i][0],yi=r[i][1],xj=r[j][0],yj=r[j][1]; if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi)) ins=!ins;} if(ins) return true; } return false; }
 
+// 暴風的樣子：三條旋臂的雲（颱風是白灰色、沙塵暴是黃土色、暴風雪是淡藍白），另外畫一張可愛的臉
+function stormTex(B){
+  const N=512, c=document.createElement('canvas'); c.width=c.height=N; const g=c.getContext('2d'), m=N/2;
+  const col=B.stormWhat==='沙'?[226,180,107]:B.stormWhat==='雪'?[236,244,255]:[238,242,248];
+  for(let arm=0;arm<3;arm++) for(let k=0;k<70;k++){
+    const u=k/70, a=arm*TAU/3+u*4.2, r=30+u*200, x=m+Math.cos(a)*r, y=m+Math.sin(a)*r, rad=20+u*34;
+    const gr=g.createRadialGradient(x,y,0,x,y,rad); gr.addColorStop(0,`rgba(${col},${0.55*(1-u*0.6)})`); gr.addColorStop(1,`rgba(${col},0)`);
+    g.fillStyle=gr; g.beginPath(); g.arc(x,y,rad,0,TAU); g.fill();
+  }
+  const core=g.createRadialGradient(m,m,0,m,m,110); core.addColorStop(0,`rgba(${col},0.95)`); core.addColorStop(1,`rgba(${col},0)`); g.fillStyle=core; g.beginPath(); g.arc(m,m,110,0,TAU); g.fill();
+  const f=document.createElement('canvas'); f.width=f.height=256; const h=f.getContext('2d');
+  const eye=(x)=>{ h.fillStyle='#24324a'; h.beginPath(); h.ellipse(x,118,16,21,0,0,TAU); h.fill(); h.fillStyle='#fff'; h.beginPath(); h.arc(x+5,110,6,0,TAU); h.fill(); };
+  eye(98); eye(158);
+  h.strokeStyle='#24324a'; h.lineWidth=6; h.lineCap='round'; h.beginPath(); h.moveTo(78,86); h.lineTo(108,96); h.moveTo(178,86); h.lineTo(148,96); h.stroke(); // 有點生氣的眉毛
+  h.fillStyle='rgba(255,128,150,.55)'; h.beginPath(); h.ellipse(72,148,15,9,0,0,TAU); h.ellipse(184,148,15,9,0,0,TAU); h.fill(); // 腮紅
+  h.fillStyle='#24324a'; h.beginPath(); h.ellipse(128,160,15,12,0,0,TAU); h.fill(); // 嘟嘴吹氣
+  h.strokeStyle='rgba(255,255,255,.9)'; h.lineWidth=5; for(const [x,y] of [[150,166],[166,176]]){ h.beginPath(); h.arc(x+14,y,8,-1.2,1.2); h.stroke(); }
+  return {spiral:new T.CanvasTexture(c),face:new T.CanvasTexture(f)};
+}
+
 /* ---------- 建立場景 ---------- */
 function build(spec){
   const B=BIOMES[spec.biome]||BIOMES.grass, night=spec.night, rr=mulberry32(20261022);
@@ -130,6 +150,11 @@ function build(spec){
     gg.setAttribute('color',new T.BufferAttribute(col,3)); gg.computeVertexNormals();
     const gm=new T.Mesh(gg,new T.MeshLambertMaterial({vertexColors:true})); if(REAL) gm.position.y=-8; sc.add(gm); // 實景時壓在空照圖底下，不然格子比較粗的草地會從坡上冒出來
   }
+  if(REAL&&!B.sea&&spec.ground.far&&spec.ground.far.masked){
+    const f=spec.ground.far, wg=new T.PlaneGeometry(f.x1-f.x0,f.z1-f.z0,72,72); wg.rotateX(-Math.PI/2); wg.translate((f.x0+f.x1)/2,0,(f.z0+f.z1)/2);
+    const wm=new T.Mesh(wg,new T.MeshPhongMaterial({color:night?0x1a4677:0x3aa7d8,shininess:90,flatShading:true})); wm.position.y=-1.5; sc.add(wm);
+    G.water=wg; G.wbase=Float32Array.from(wg.attributes.position.array);
+  }
   // 真實地圖貼圖：遠景整片、近景（風機附近）比較清楚；海上場景的海面已經挖空，露出底下的 3D 海浪
   if(spec.ground){
     const lay=(shot,lift,order)=>{
@@ -139,7 +164,8 @@ function build(spec){
       const g=new T.PlaneGeometry(w,d,seg,seg); g.rotateX(-Math.PI/2); g.translate((shot.x0+shot.x1)/2,0,(shot.z0+shot.z1)/2);
       if(REAL) G.shots.push({tex,x0:shot.x0,x1:shot.x1,z0:shot.z0,z1:shot.z1});
       if(!B.sea||REAL){ const a=g.attributes.position; for(let i=0;i<a.count;i++) a.setY(i,G.h(a.getX(i),a.getZ(i))); g.computeVertexNormals(); }
-      const m=new T.MeshLambertMaterial({map:tex,transparent:B.sea&&!REAL,alphaTest:B.sea&&!REAL?0.5:0,color:night?0x5a6788:0xffffff,
+      const hole=(B.sea&&!REAL)||shot.masked; // 海挖空了：露出底下的 3D 海浪
+      const m=new T.MeshLambertMaterial({map:tex,transparent:B.sea&&!REAL,alphaTest:hole?0.5:0,color:night?0x5a6788:0xffffff,
         polygonOffset:true,polygonOffsetFactor:-order,polygonOffsetUnits:-order*4});
       const mesh=new T.Mesh(g,m); mesh.position.y=B.sea&&!REAL?LANDY+lift:lift; mesh.renderOrder=order; sc.add(mesh);
     };
@@ -402,6 +428,8 @@ function build(spec){
     const col=B.stormWhat==='沙'?0xe2b46b:B.stormWhat==='雪'?0xffffff:0xbfd6ff;
     G.precip={pts:new T.Points(g,new T.PointsMaterial({color:col,size:B.stormWhat==='雨'?4:6,transparent:true,opacity:0})),g,n}; sc.add(G.precip.pts); }
 
+  { const ty=stormTex(B), mk=(map,o)=>new T.Sprite(new T.SpriteMaterial(Object.assign({map,transparent:true,depthWrite:false,fog:false,opacity:0},o||{})));
+    G.ty={sp:mk(ty.spiral),face:mk(ty.face),dir:null}; G.ty.sp.visible=G.ty.face.visible=false; sc.add(G.ty.sp,G.ty.face); }
   // 鏡頭
   const cdx=vx-far.x, cdz=vz-far.z, cdn=Math.hypot(cdx,cdz)||1;
   G.cam=new T.PerspectiveCamera(50,1,REAL?0.5:5,size*1.2);
@@ -508,10 +536,32 @@ function quality(l){ QL=l; if(R3){ R3.setPixelRatio(Math.min(window.devicePixelR
 function close(){ exitBW(true); G.open=false; G.blowing=false; $('#v3d').hidden=true; document.body.classList.remove('v3on'); ctx&&ctx.onClose&&ctx.onClose(); }
 function resize(){ if(!R3) return; const w=cv.clientWidth||innerWidth, h=cv.clientHeight||innerHeight; R3.setSize(w,h,false); if(G.bw) G.bw.resize(w,h); if(G.cam){G.cam.aspect=w/h;G.cam.updateProjectionMatrix();} }
 
+const stormName=()=>G.spec&&G.spec.typhoon&&G.B.stormWhat==='雨'?'颱風':G.B.storm; // 西北太平洋的風場：暴風就叫颱風
+// 任務 3：颱風從前方遠處（約 300 公里外）靠近 → 停在前面（最強）→ 往旁邊飄走；固定在任務開始時鏡頭看的方向，小朋友一定看得到
+function stepStorm(dt,t,ws){
+  const Y=G.ty, bar=$('#v3ty'); if(!Y) return;
+  const on=G.m===2&&G.broken<=0, s=G.mt;
+  if(!on){ Y.sp.visible=Y.face.visible=false; if(bar) bar.hidden=true; $('#v3prot').classList.remove('need'); return; }
+  const cp=G.cam.position;
+  if(!Y.dir){ const v=new T.Vector3(); G.cam.getWorldDirection(v); v.y=0; if(v.lengthSq()<1e-6) v.set(0,0,-1); v.normalize(); Y.dir=v; Y.side=new T.Vector3(-v.z,0,v.x); Y.base=cp.clone(); }
+  // 距離（公尺）：0～13 秒從 9 公里靠近到 1.8 公里，13～20 秒停在前面晃，20～28 秒往右邊飄走
+  const near=1800, farD=9000, k=s<13?s/13:1, dist=s<13?farD-(farD-near)*(k*k*(3-2*k)):near, leave=s<20?0:Math.min(1,(s-20)/8);
+  const P=Y.base.clone().addScaledVector(Y.dir,dist+leave*1500).addScaledVector(Y.side,Math.sin(t*0.6)*120+leave*leave*7000);
+  P.y=Y.base.y+260+dist*0.06+Math.sin(t*1.3)*30;
+  const sc=2600*(1.05+0.1*Math.sin(t*2))*(s<13?0.45+0.55*k:1), op=Math.min(1,s/3)*(1-leave);
+  Y.sp.position.copy(P); Y.sp.scale.setScalar(sc); Y.sp.material.rotation+=dt*(0.6+G.storm*1.8); Y.sp.material.opacity=op*0.95;
+  const toCam=cp.clone().sub(P).normalize(); Y.face.position.copy(P).addScaledVector(toCam,60); Y.face.scale.setScalar(sc*0.36*(1+0.06*Math.sin(t*5))); Y.face.material.opacity=op;
+  Y.face.material.rotation=Math.sin(t*1.7)*0.12; Y.sp.visible=Y.face.visible=op>0.01;
+  if(bar){ bar.hidden=false; const st=tr(stormName()), km=Math.max(0,Math.round((dist-near)/(farD-near)*300));
+    const tx=s>=20?tr('{s}走遠了～',{s:st}):km>0?tr('{s}距離 {d} 公里，越來越近了！',{s:st,d:km}):tr('{s}來了！',{s:st});
+    if(bar.dataset.t!==tx){ bar.dataset.t=tx; bar.querySelector('span').textContent=tx; const mis=$('.v3mis'); if(mis) bar.style.top=(mis.offsetTop+mis.offsetHeight+10)+'px'; /* 放在任務框下面 */ } bar.classList.toggle('hot',s>=13&&s<20); }
+  $('#v3prot').classList.toggle('need',!G.prot&&ws>=20); // 風太強還沒保護：保護鈕一直閃
+}
+
 /* ---------- 任務 ---------- */
 function startMission(i){
-  G.m=i; G.mt=0; G.prog=0; G.full=0; G.dmg=0; G.broken=0; G.prot=false; G.storm=0;
-  const M=i===0&&G.seaSub?SEA_M:MISSIONS[i], storm=tr(G.B.storm);
+  G.m=i; G.mt=0; G.prog=0; G.full=0; G.dmg=0; G.broken=0; G.prot=false; G.storm=0; if(G.ty) G.ty.dir=null;
+  const M=i===0&&G.seaSub?SEA_M:MISSIONS[i], storm=tr(stormName());
   const show=(id,on)=>{ const el=$(id); if(el) el.hidden=!on; };
   show('#v3l',i>=1&&i<3); show('#v3r',i>=1&&i<3); show('#v3prot',i===2); show('#v3again',i===3); show('#v3blow',i<3);
   $('#v3prot').classList.remove('on');
@@ -525,7 +575,7 @@ function startMission(i){
 }
 function missionDone(){
   ctx.addStar(); ctx.confetti($('#v3d'));
-  const txt=[tr(G.seaSub?'變電站的燈都亮了！':'全村的燈都亮了！'),tr('風向對準了，電一直送出去！'),tr('{s}過去了，風機平安無事！',{s:tr(G.B.storm)})][G.m];
+  const txt=[tr(G.seaSub?'變電站的燈都亮了！':'全村的燈都亮了！'),tr('風向對準了，電一直送出去！'),tr('{s}過去了，風機平安無事！',{s:tr(stormName())})][G.m];
   ctx.toast('⭐ '+txt,3000); ctx.say(txt);
   const next=G.m+1; G.m=-1; setTimeout(()=>{ if(G.open) startMission(next); if(next===3){ ctx.say(tr('三個任務都完成了，你是風之小勇者！')); ctx.confetti($('#v3d')); } },2600);
 }
@@ -580,7 +630,7 @@ function step(now){
     else{
       if(ws>=VCO&&!G.prot){ G.dmg+=dt; if(G.dmg>2.5){ G.broken=4; ctx.say(tr('風機受損了，再試一次！')); } } else G.dmg=Math.max(0,G.dmg-dt);
       if(G.mt>22&&!G.prot&&ws<20&&frac>0.4){ G.prog=Math.min(1,G.prog+dt/2); if(G.prog>=1) missionDone(); }
-      msg=G.mt<5?tr('天空變暗了…{s}快來了，注意風速！',{s:tr(G.B.storm)}):tr(
+      msg=G.mt<5?tr('天空變暗了…{s}快來了，注意風速！',{s:tr(stormName())}):tr(
           ws>=VCO?(G.prot?'葉片收好了！風機安全停下來，等暴風過去～':'危險！風速超過每秒 25 公尺，快按「🛡 保護」！'):
           ws>=20&&!G.prot?'風越來越強！準備按「🛡 保護」':
           G.prot&&ws<20&&G.mt>20?'風變小了，關掉「保護」讓風車繼續發電！':
@@ -617,6 +667,7 @@ function step(now){
     pc.g.attributes.position.needsUpdate=true;
   }
   if(G.water){ const a=G.water.attributes.position, b=G.wbase, amp=1+st*2.5; for(let i=0;i<a.count;i++){const x=b[3*i],z=b[3*i+2]; a.array[3*i+1]=(Math.sin(x*0.004+t*1.2)*3+Math.cos(z*0.005+t)*2.5)*amp*(G.real?0.25:1);} a.needsUpdate=true; }
+  stepStorm(dt,t,ws);
   if(G.night){ const on=(t%1.5)<0.4; for(const l of G.lights) l.visible=on; }
   // 雲、風線、草、動物、鳥
   const wdx=Math.sin(G.windA+Math.PI), wdz=Math.cos(G.windA+Math.PI), half=G.size*0.35;

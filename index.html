@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <!-- 多國語言：判斷語言、載入字典（要在其他程式之前） -->
-<script src="assets/i18n.js?v=20261028u"></script>
+<script src="assets/i18n.js?v=20261028v"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>風車地球 WindPowerGlobe｜全球風力發電即時模擬</title>
 <link rel="canonical" href="https://windpowerglobe.com/">
@@ -32,7 +32,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Sora:wght@500;700;800&display=swap" rel="stylesheet">
 <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
 <link href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" rel="stylesheet">
-<link href="assets/style.css?v=20261028u" rel="stylesheet">
+<link href="assets/style.css?v=20261028v" rel="stylesheet">
 </head>
 <body>
 <div class="wrap">
@@ -205,8 +205,15 @@
     <p class="lg-note"><span class="lg-ring lg-rainbow"></span>七彩跑馬燈：收集到貼紙的風場</p></div>
 </details>
 <details class="box" open>
-  <summary><span class="mac-h">更新紀錄</span><small>最後更新：2026/10/27</small><span class="fold" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span></summary>
+  <summary><span class="mac-h">更新紀錄</span><small>最後更新：2026/10/28</small><span class="fold" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span></summary>
   <div class="logs">
+    <div class="lday"><div class="ld">2026.10.28</div><ul>
+      <li><span class="lt lt-new">新增</span><span>3D 任務三「颱風來襲」：天上會出現一顆會轉、有表情的可愛颱風，從遠方慢慢靠近再飄走，上面顯示颱風還有幾公里；風太強時「保護」鈕會一直閃</span></li>
+      <li><span class="lt lt-rev">改版</span><span>3D 風場的底圖顏色更鮮豔可愛，海、湖、河變成會動的波浪；空照圖沒抓到的地方改成草地，不再露出米色地圖</span></li>
+      <li><span class="lt lt-fix">修正</span><span>環遊世界導覽不會再自動送貼紙（要自己點風場才拿得到）</span></li>
+      <li><span class="lt lt-fix">修正</span><span>網頁縮小或切到別的分頁時，音樂播完會接著播下一首；換音樂區時偶爾整個沒聲音的問題</span></li>
+      <li><span class="lt lt-fix">修正</span><span>放空模式或環遊導覽中點小遊戲，會自動關掉放空／導覽，遊戲直接開始</span></li>
+    </ul></div>
     <div class="lday"><div class="ld">2026.10.27</div><ul>
       <li><span class="lt lt-new">新增</span><span>點風車會一個音一個音彈出兒歌：小星星、生日快樂、兩隻老虎、瑪莉有隻小綿羊、小蜜蜂、倫敦鐵橋、歡樂頌、王老先生有塊地、划船歌（都是公版老歌），彈完自動再彈一次完整的；連連看全部連起來也會送一首</span></li>
       <li><span class="lt lt-rev">改版</span><span>地圖上的風車比較好點了：不用點準底下的小點點，點塔身或葉片附近都算，手機範圍更大</span></li>
@@ -296,6 +303,7 @@
     <circle cx="30" cy="30" r="3" fill="#ffb83d"/>
   </svg>
   <div class="v3mis"><b id="v3mt"></b><span id="v3md"></span><div class="v3bar v3goal"><i id="v3goal"></i></div></div>
+  <div id="v3ty" hidden><i>🌀</i><span></span></div>
   <div class="v3game">
     <div id="v3msg"></div>
     <div class="v3stats">風速 <b id="v3ws">0</b> m/s　亮燈 <b id="v3lit">0</b>　<span id="v3dirT"></span><div class="v3bar"><i id="v3pw"></i></div></div>
@@ -312,6 +320,6 @@
 <script src="https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
 <script>I18N.trDom()</script>
-<script src="assets/app.js?v=20261028u"></script>
+<script src="assets/app.js?v=20261028v"></script>
 </body>
 </html>

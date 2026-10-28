@@ -300,6 +300,17 @@ body.v3on #toast{bottom:auto;top:calc(76px + env(safe-area-inset-top,0px))}
 #v3l.on,#v3r.on{transform:translateY(3px);box-shadow:0 2px 0 #23968c}
 #v3prot{width:84px;height:84px;background:#9fd8ff;font-size:17px;line-height:1.2;box-shadow:0 5px 0 #4f93c4}
 #v3prot.on{background:#ff8a65;box-shadow:0 2px 0 #c45a3a;transform:translateY(3px)}
+#v3prot.need{animation:v3need .7s ease-in-out infinite}
+@keyframes v3need{0%,100%{transform:scale(1);box-shadow:0 5px 0 #4f93c4,0 0 0 0 rgba(255,214,90,.9)}50%{transform:scale(1.12);box-shadow:0 5px 0 #4f93c4,0 0 0 12px rgba(255,214,90,0)}}
+/* 任務 3：颱風距離提示 */
+#v3ty{position:absolute;left:12px;top:calc(166px + env(safe-area-inset-top,0px));display:flex;align-items:center;gap:8px;background:rgba(6,19,31,.75);color:#fff;font-weight:800;font-size:16px;padding:8px 16px 8px 10px;border-radius:999px;pointer-events:none;white-space:nowrap;max-width:calc(100% - 24px)}
+#v3ty[hidden]{display:none}
+#v3ty i{font-style:normal;font-size:26px;display:inline-block;animation:v3spin 1.6s linear infinite}
+#v3ty.hot{background:rgba(196,58,58,.85);animation:v3hot .8s ease-in-out infinite;transform-origin:left center}
+#v3ty.hot i{animation-duration:.5s}
+@keyframes v3spin{to{transform:rotate(-360deg)}}
+@keyframes v3hot{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+@media (max-width:760px){#v3ty{font-size:14px}}
 #v3again{width:84px;height:84px;background:#7bd36a;font-size:17px;line-height:1.2;box-shadow:0 5px 0 #4a9a3c}
 .v3mis{position:absolute;left:12px;top:calc(64px + env(safe-area-inset-top,0px));width:min(340px,calc(100% - 100px));background:rgba(6,19,31,.72);color:#fff;border-radius:14px;padding:10px 12px;backdrop-filter:blur(6px);pointer-events:none}
 .v3mis b{display:block;font-size:16px;color:#ffd27a}
