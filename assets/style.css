@@ -266,7 +266,11 @@ details.src li{font-size:13px;color:var(--muted);margin:4px 0}
 .bw-btns button{border:0;border-radius:999px;padding:10px 16px;font-size:16px;font-weight:800;background:rgba(0,0,0,.55);color:#fff;user-select:none;-webkit-user-select:none;touch-action:none;white-space:nowrap}
 .bw-btns [data-a=jump].on{background:#7a5cd6}
 .bw-btns [data-a=sneak].on{background:#4a8f5c}
-.bw-btns [data-a=mus].on{background:#c7568f}
+.bw-btns [data-a=brk]{background:rgba(74,143,245,.75)}
+.bw-btns [data-a=brk].on{background:#d9573a}
+#bwmus{pointer-events:auto;border:0;border-radius:999px;padding:9px 14px;background:rgba(0,0,0,.5);color:#fff;font-weight:700;font-size:14px;white-space:nowrap;margin-left:auto}
+#bwmus.on{background:#c7568f}
+#v3d.bw #bwmus+#v3bw{margin-left:0}
 /* 準心（滑鼠鎖住時）、平板按住拆方塊的圈圈、「點一下開始」提示 */
 .bw-cross{position:absolute;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;pointer-events:none;mix-blend-mode:difference}
 .bw-cross::before,.bw-cross::after{content:"";position:absolute;background:#fff}
@@ -279,6 +283,7 @@ details.src li{font-size:13px;color:var(--muted);margin:4px 0}
 .bw-lockhint{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);max-width:calc(100% - 32px);padding:10px 16px;border-radius:12px;background:rgba(0,0,0,.55);color:#fff;font-weight:700;font-size:15px;text-align:center;pointer-events:none}
 .bw-btns [data-a=float].on{background:#2f9e8f}
 .bw-btns [data-a=fast].on{background:#e0a020;color:#2a1a00}
+@media (min-width:900px){.bw-btns{bottom:calc(16px + env(safe-area-inset-bottom,0px))}}
 @media (max-width:600px){.bw-bar{gap:2px;padding:3px}.bw-bar button{width:36px;height:36px;padding:3px;border-width:2px}.bw-tools{bottom:calc(58px + env(safe-area-inset-bottom,0px));gap:2px;padding:3px}.bw-tools button{min-width:40px;height:44px;padding:1px 2px}.bw-tools button b{font-size:16px}.bw-tools button small{font-size:9px}.bw-btns{bottom:calc(114px + env(safe-area-inset-bottom,0px));right:10px}.bw-btns button{padding:8px 12px;font-size:14px}}
 #v3view:not([hidden])~#v3dn{margin-left:0}
 #v3dn{margin-left:auto;pointer-events:auto;border:0;border-radius:999px;padding:9px 14px;background:rgba(0,0,0,.5);color:#fff;font-weight:700;font-size:14px}
@@ -386,7 +391,7 @@ body.v3on{overflow:hidden}
   #v3info{display:none}
   .v3top{flex-wrap:nowrap}
   .v3top b{font-size:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-  #v3dn,#v3view,#v3bw{padding:7px 10px;font-size:13px;white-space:nowrap}
+  #v3dn,#v3view,#v3bw,#bwmus{padding:7px 10px;font-size:13px;white-space:nowrap}
   .v3top{flex-wrap:wrap;row-gap:6px}
   .v3mis{top:calc(66px + env(safe-area-inset-top,0px));width:calc(100% - 96px)}
   .v3cmp{width:62px;height:62px;top:calc(68px + env(safe-area-inset-top,0px));right:10px}

@@ -213,7 +213,7 @@ function drawWorld(g,dtR,occ){
     g.globalCompositeOperation='source-over';
     return;
   }
-  const col=C.dark?'#f2f7fb':'#1b3446'; let icons=0, lastC=null;
+  const col=C.dark?'#f2f7fb':'#ffffff'; let icons=0, lastC=null;
   // 先畫所有小點（同一格同一個顏色，只設定一次），再畫風機圖示
   for(let k=0;k<L.length;k+=4){
     const c=L[k+3]; if(c!==lastC){ lastC=c; g.fillStyle=c.fill||wHue(c.frac,0.95); }
@@ -714,16 +714,20 @@ function sunPos(ms){
   return [-(h-12)*15,dec];
 }
 
+// 白天：風機維持白色，外面描一圈深色框線才看得清楚（晚上不用）
+const TB_OL='rgba(24,42,56,.9)';
+function olStroke(g,lw){ if(!C.dark){ const s0=g.strokeStyle; g.strokeStyle=TB_OL; g.lineWidth=lw+2; g.stroke(); g.strokeStyle=s0; } g.lineWidth=lw; g.stroke(); }
+function olFill(g,lw){ g.fill(); if(!C.dark){ g.strokeStyle=TB_OL; g.lineWidth=lw; g.lineJoin='round'; g.stroke(); } }
 function drawTurbine(g,x,y,s,ang,col){
-  g.strokeStyle=C.muted; g.lineWidth=Math.max(1,s*0.07);
-  g.beginPath(); g.moveTo(x,y); g.lineTo(x,y-s); g.stroke();
+  g.strokeStyle=C.dark?C.muted:'#f4f7f9';
+  g.beginPath(); g.moveTo(x,y); g.lineTo(x,y-s); olStroke(g,Math.max(1,s*0.07));
   const hx=x, hy=y-s, L=s*0.78, w=s*0.075;
   g.fillStyle=col; g.beginPath();
   for(let k=0;k<3;k++){
     const a=ang+k*TAU/3, ca=Math.cos(a), sa=Math.sin(a);
-    g.moveTo(hx-sa*w,hy+ca*w); g.lineTo(hx+ca*L,hy+sa*L); g.lineTo(hx+sa*w,hy-ca*w);
+    g.moveTo(hx-sa*w,hy+ca*w); g.lineTo(hx+ca*L,hy+sa*L); g.lineTo(hx+sa*w,hy-ca*w); g.closePath();
   }
-  g.fill();
+  olFill(g,1);
   g.beginPath(); g.arc(hx,hy,Math.max(1.5,s*0.08),0,TAU); g.fillStyle=C.warm; g.fill();
 }
 const OFFS=[[0,0],[-1.15,0.45],[1.15,0.45],[-0.6,-0.55],[0.6,-0.55]];
@@ -753,14 +757,14 @@ function turbStyle(cl,lon,lat,i){
 const ERA_BLADE=[0.13,0.095,0.078,0.066,0.058], ERA_TOWER=[0.06,0.05,0.045,0.04,0.038], ERA_NAC=[0.16,0.2,0.23,0.26,0.3];
 function bladesPath(g,hx,hy,R,w,ang,n){
   for(let k=0;k<n;k++){ const a=ang+k*TAU/n, ca=Math.cos(a), sa=Math.sin(a);
-    g.moveTo(hx-sa*w,hy+ca*w); g.lineTo(hx+ca*R,hy+sa*R); g.lineTo(hx+sa*w,hy-ca*w); }
+    g.moveTo(hx-sa*w,hy+ca*w); g.lineTo(hx+ca*R,hy+sa*R); g.lineTo(hx+sa*w,hy-ca*w); g.closePath(); }
 }
 const rainbowAt=(k,off=0)=>`hsl(${((performance.now()/10)+k*120+off)%360},100%,60%)`;
 function drawTurbineTrue(g,x,y,Hp,R,ang,col,alpha=1,st=null,rainbow=false){
   if(alpha<=0.02) return;
   st=st||{kind:0,era:1};
   g.globalAlpha=alpha;
-  const hx=x, hy=y-Hp, tc=C.muted;
+  const hx=x, hy=y-Hp, tc=C.dark?C.muted:'#f4f7f9', ow=Math.max(0.8,Math.min(1.4,Hp*0.012)); // ow：白天框線粗細
   const towerGrad=(x0,y0,x1,y1)=>{ const gr=g.createLinearGradient(x0,y0,x1,y1); gr.addColorStop(0,'#ff5a5a'); gr.addColorStop(0.5,'#ffd23f'); gr.addColorStop(1,'#4dff88'); return gr; };
   if(st.kind===3){ // 傳統風車：木造塔身＋圓頂，四片格子帆
     const bw=Hp*0.42, tw=Hp*0.22, bh=Hp*0.8;
@@ -778,19 +782,19 @@ function drawTurbineTrue(g,x,y,Hp,R,ang,col,alpha=1,st=null,rainbow=false){
   }
   if(st.kind===2){ // 垂直軸：H 型（白色管狀葉片＋橫臂）或螺旋型（扭轉的葉片繞著藍色發電機）
     const cy=y-Hp*0.62, hh=Hp*0.3, rr=Math.max(3,R*0.6);
-    g.strokeStyle=rainbow?towerGrad(x,y,x,cy):tc; g.lineWidth=Math.max(1.2,Hp*0.05); g.beginPath(); g.moveTo(x,y); g.lineTo(x,cy+hh); g.stroke();
+    g.strokeStyle=rainbow?towerGrad(x,y,x,cy):tc; g.beginPath(); g.moveTo(x,y); g.lineTo(x,cy+hh); olStroke(g,Math.max(1.2,Hp*0.05));
     if(st.helix){
       g.fillStyle='#3d6fd6'; g.fillRect(x-Hp*0.03,cy-hh*0.6,Hp*0.06,hh*1.2);
-      for(let k=0;k<3;k++){ g.strokeStyle=rainbow?rainbowAt(k):col; g.lineWidth=Math.max(1.2,Hp*0.035); g.beginPath();
+      for(let k=0;k<3;k++){ g.strokeStyle=rainbow?rainbowAt(k):col; g.beginPath();
         for(let s=0;s<=16;s++){ const t=s/16, a=ang*0.5+k*TAU/3+t*Math.PI*0.9, px=x+Math.sin(a)*rr*Math.sin(Math.PI*t), py=cy-hh+t*2*hh; s?g.lineTo(px,py):g.moveTo(px,py); }
-        g.stroke(); }
+        olStroke(g,Math.max(1.2,Hp*0.035)); }
     }else{
       const top=cy-hh*0.7, bot=cy+hh*0.7;
       for(let k=0;k<3;k++){ const a=ang*0.5+k*TAU/3, bx=x+Math.cos(a)*rr, front=Math.sin(a)>0;
         g.globalAlpha=alpha*(front?1:0.45);
-        g.strokeStyle=rainbow?rainbowAt(k):col; g.lineWidth=Math.max(0.8,Hp*0.025);
-        g.beginPath(); g.moveTo(x,top); g.lineTo(bx,top); g.moveTo(x,bot); g.lineTo(bx,bot); g.stroke();
-        g.lineWidth=Math.max(2,Hp*0.07); g.lineCap='round'; g.beginPath(); g.moveTo(bx,cy-hh); g.lineTo(bx,cy+hh); g.stroke(); g.lineCap='butt'; }
+        g.strokeStyle=rainbow?rainbowAt(k):col;
+        g.beginPath(); g.moveTo(x,top); g.lineTo(bx,top); g.moveTo(x,bot); g.lineTo(bx,bot); olStroke(g,Math.max(0.8,Hp*0.025));
+        g.lineCap='round'; g.beginPath(); g.moveTo(bx,cy-hh); g.lineTo(bx,cy+hh); olStroke(g,Math.max(2,Hp*0.07)); g.lineCap='butt'; }
       g.globalAlpha=alpha;
     }
     g.globalAlpha=1; return;
@@ -800,14 +804,14 @@ function drawTurbineTrue(g,x,y,Hp,R,ang,col,alpha=1,st=null,rainbow=false){
   if(rainbow) g.strokeStyle=towerGrad(x,y,x,hy);
   else if(st.green){ const gr=g.createLinearGradient(x,y,x,hy); gr.addColorStop(0,'#1f8a45'); gr.addColorStop(0.3,'#3fa862'); gr.addColorStop(0.6,'#a9d9b4'); gr.addColorStop(0.75,tc); gr.addColorStop(1,tc); g.strokeStyle=gr; }
   else g.strokeStyle=tc;
-  g.lineWidth=lw; g.beginPath(); g.moveTo(x,y); g.lineTo(x,hy); g.stroke();
+  g.beginPath(); g.moveTo(x,y); g.lineTo(x,hy); olStroke(g,lw);
   if(st.off&&!rainbow){ g.strokeStyle='#f2c200'; g.lineWidth=lw*1.6; g.beginPath(); g.moveTo(x,y); g.lineTo(x,y-Hp*0.14); g.stroke(); }
   const nl=R*ERA_NAC[st.era], nh=nl*0.42;
-  g.fillStyle=rainbow?'#ffd23f':col; g.fillRect(hx-nl*0.3,hy-nh/2,nl,nh);
+  g.fillStyle=rainbow?'#ffd23f':col; g.beginPath(); g.rect(hx-nl*0.3,hy-nh/2,nl,nh); rainbow?g.fill():olFill(g,ow);
   const n=st.kind===1?2:3, w=Math.max(0.8,R*ERA_BLADE[st.era]*(n===2?1.25:1));
   if(rainbow){ for(let k=0;k<n;k++){ g.fillStyle=rainbowAt(k); g.beginPath(); bladesPath(g,hx,hy,R,w,ang+k*TAU/n,1); g.fill(); } }
   else{
-    g.fillStyle=col; g.beginPath(); bladesPath(g,hx,hy,R,w,ang,n); g.fill();
+    g.fillStyle=col; g.beginPath(); bladesPath(g,hx,hy,R,w,ang,n); olFill(g,ow);
     if(st.red){
       g.fillStyle='#e8302a'; g.beginPath();
       for(let k=0;k<n;k++){ const a=ang+k*TAU/n, ca=Math.cos(a), sa=Math.sin(a), r0=R*0.6, r1=R*0.9, ww=w*0.5;
@@ -819,7 +823,7 @@ function drawTurbineTrue(g,x,y,Hp,R,ang,col,alpha=1,st=null,rainbow=false){
   g.globalAlpha=1;
 }
 function drawTrueSet(g,list,D,hh,ang0,colFn,farm,spKm,occ){
-  const col=C.dark?'#f2f7fb':'#1b3446';
+  const col=C.dark?'#f2f7fb':'#ffffff';
   for(const t of list){
     if(!inBox(t.lon,t.lat,0)) continue;
     const p=project(t.lon,t.lat); if(!p) continue;
@@ -867,7 +871,7 @@ function drawFarms(dtR){
     if(icons||f===S.sel){
       const s=Math.min(28,9+Z*1.4);
       const n=f===S.sel||icons?Math.min(5,Math.max(1,Math.round(Math.log2((f.t||1)+1)/1.6))):1;
-      for(let i=n-1;i>=0;i--){const o=OFFS[i];drawTurbine(g,p[0]+o[0]*s*0.9,p[1]+o[1]*s*0.9+s*0.35,s,f.ang+i*0.9,C.dark?'#f2f7fb':'#1b3446');}
+      for(let i=n-1;i>=0;i--){const o=OFFS[i];drawTurbine(g,p[0]+o[0]*s*0.9,p[1]+o[1]*s*0.9+s*0.35,s,f.ang+i*0.9,C.dark?'#f2f7fb':'#ffffff');}
     }else{
       g.fillStyle=farmColor(f,1); g.beginPath(); g.arc(p[0],p[1],Math.max(1.8,f.r*0.38),0,TAU); g.fill();
     }
@@ -2297,7 +2301,7 @@ let G3_P=null;
 function loadGame3D(){
   if(window.WindGame3D) return Promise.resolve();
   if(G3_P) return G3_P;
-  G3_P=new Promise((res,rej)=>{const s=document.createElement('script');s.src='assets/game3d.js?v=20261028v';s.onload=()=>res();s.onerror=()=>{G3_P=null;rej(new Error(tr('3D 遊戲載入失敗，請檢查網路後再試一次')));};document.head.appendChild(s);});
+  G3_P=new Promise((res,rej)=>{const s=document.createElement('script');s.src='assets/game3d.js?v=20261031a';s.onload=()=>res();s.onerror=()=>{G3_P=null;rej(new Error(tr('3D 遊戲載入失敗，請檢查網路後再試一次')));};document.head.appendChild(s);});
   return G3_P;
 }
 function nearPts(lon,lat,km){
@@ -2657,7 +2661,7 @@ loadWind();
 const LG_TB={t0:{kind:0,era:2},t1:{kind:0,era:2,green:true},t2:{kind:0,era:3,red:true},t3:{kind:0,era:4,off:true},t4:{kind:2,era:1},t5:{kind:2,era:1,helix:true},t6:{kind:3,era:0},t7:{kind:0,era:2}};
 const legendEl=$('#legend');
 function drawLegend(now){
-  const col=C.dark?'#f2f7fb':'#1b3446';
+  const col=C.dark?'#f2f7fb':'#ffffff';
   for(const cv of legendEl.querySelectorAll('canvas.lg-cv')){
     const d=Math.min(2,devicePixelRatio||1), w=cv.clientWidth||+cv.width, h=cv.clientHeight||+cv.height;
     if(cv.width!==Math.round(w*d)){ cv.width=Math.round(w*d); cv.height=Math.round(h*d); }

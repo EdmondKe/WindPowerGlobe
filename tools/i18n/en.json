@@ -915,10 +915,18 @@
  "{s}走遠了～": "The {s} is moving away~",
  "{s}距離 {d} 公里，越來越近了！": "{s} is {d} km away and getting closer!",
  "{s}來了！": "The {s} is here!",
- "最後更新：2026/10/28": "Last updated: 2026/10/28",
  "3D 任務三「颱風來襲」：天上會出現一顆會轉、有表情的可愛颱風，從遠方慢慢靠近再飄走，上面顯示颱風還有幾公里；風太強時「保護」鈕會一直閃": "3D mission 3 \"Storm Alert\": a cute spinning storm with a face appears in the sky, slowly comes closer and drifts away, with a sign showing how many km away it is; the \"Protect\" button flashes when the wind gets too strong",
  "3D 風場的底圖顏色更鮮豔可愛，海、湖、河變成會動的波浪；空照圖沒抓到的地方改成草地，不再露出米色地圖": "The 3D wind farm ground has brighter, cuter colors, and seas, lakes and rivers are now moving waves; spots where the aerial photo didn't load show grass instead of a beige map",
  "環遊世界導覽不會再自動送貼紙（要自己點風場才拿得到）": "The world tour no longer gives stickers by itself (tap a wind farm yourself to get one)",
  "網頁縮小或切到別的分頁時，音樂播完會接著播下一首；換音樂區時偶爾整個沒聲音的問題": "Music now moves on to the next song when the page is minimized or in another tab; fixed music sometimes going silent when changing music zones",
- "放空模式或環遊導覽中點小遊戲，會自動關掉放空／導覽，遊戲直接開始": "Opening a mini game during relax mode or the world tour now turns them off and starts the game right away"
+ "放空模式或環遊導覽中點小遊戲，會自動關掉放空／導覽，遊戲直接開始": "Opening a mini game during relax mode or the world tour now turns them off and starts the game right away",
+ "最後更新：2026/10/31": "Last updated: 2026/10/31",
+ "白天模式的風機改成白色加深色框線，跟真的一樣是白色，在淺色地圖上也看得清楚": "In day mode, wind turbines are now white with a dark outline, just like real ones, and easy to see on the light map",
+ "方塊世界右下角的按鈕重新排過：最下面是「跳」，往上是蹲下、加速、浮力；「🎵 音樂」移到上面「回到風場」左邊": "Block World buttons in the bottom-right are rearranged: \"Jump\" is at the bottom, then Crouch, Speed and Float above it; \"🎵 Music\" moved to the top, left of \"Back to wind farm\"",
+ "手機、平板的方塊世界多了「🧱 放方塊／⛏ 拆方塊」切換鈕，切到拆方塊後點一下就拆（按住拆一樣可以用）": "Block World on phones and tablets now has a \"🧱 Place / ⛏ Break\" switch; in Break mode one tap removes a block (press and hold still breaks too)",
+ "⛏ 拆方塊": "⛏ Break",
+ "🧱 放方塊": "🧱 Place",
+ "拆方塊模式：點一下就拆掉方塊（再按一次換回放方塊）": "Break mode: tap a block to remove it (press the button again to go back to placing)",
+ "放方塊模式：點一下放方塊，按住拆方塊": "Place mode: tap to place a block, press and hold to break one",
+ "方塊世界的風車葉片、磨坊的帆和中間的輪轂也可以拆了：用手、大槌子、方塊槍、雷射、光劍、火箭、炸彈、隕石、龍捲風都打得掉，「上一步」可以裝回去": "Block World turbine blades, windmill sails and the hub can now be broken too: hands, hammer, block gun, laser, lightsaber, rocket, bomb, meteor and tornado all work, and \"Undo\" puts them back"
 }

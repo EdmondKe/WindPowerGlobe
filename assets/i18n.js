@@ -27,7 +27,7 @@ function detect(){
 const LANG=detect();
 document.documentElement.lang=LANG;
 // 字典：同步載入，app.js 執行時就有
-if(LANG!=='zh-Hant') document.write(`<script src="assets/i18n/${LANG}.js?v=20261028v"><\/script>`);
+if(LANG!=='zh-Hant') document.write(`<script src="assets/i18n/${LANG}.js?v=20261031a"><\/script>`);
 
 const CJK=/[㐀-鿿]/;
 const REV=new Map(); // 翻譯後的句子 → 原文（中文語音檔用原文找）
